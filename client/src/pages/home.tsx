@@ -18,6 +18,8 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
   const [formUrl, setFormUrl] = useState("https://docs.google.com/forms/d/e/1FAIpQLSeY6qq5SzebJ0wqfrT1AMdYzbJ1ts3qXeZy1bs8WddKSXXpqw/viewform");
   const [additionalMessage, setAdditionalMessage] = useState("");
+  const [showEmbeddedForm, setShowEmbeddedForm] = useState(false);
+  const [prefillFormUrl, setPrefillFormUrl] = useState("");
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submissionTime, setSubmissionTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +160,47 @@ export default function Home() {
     submitFormMutation.mutate();
   };
 
+  const handleShowEmbeddedForm = () => {
+    if (!userProfile) {
+      showToast('LINEログインが必要です', 'error');
+      return;
+    }
+
+    if (!formUrl.trim()) {
+      showToast('フォームURLを入力してください', 'error');
+      return;
+    }
+
+    // Google Formsのプリフィル機能でUIDを事前設定
+    const prefillUrl = generatePrefillUrl(formUrl, userProfile.userId);
+    setPrefillFormUrl(prefillUrl);
+    setShowEmbeddedForm(true);
+  };
+
+  const generatePrefillUrl = (originalUrl: string, userId: string): string => {
+    try {
+      // Google FormsのURLにプリフィルパラメータを追加
+      let url = originalUrl;
+
+      // URLに?が含まれているかチェック
+      const separator = url.includes('?') ? '&' : '?';
+
+      // entry.1587760013 (ユーザーID用)にUIDを事前設定
+      url += `${separator}entry.1587760013=${encodeURIComponent(userId)}`;
+
+      // 追加メッセージがある場合はentry.478817684にも設定
+      if (additionalMessage.trim()) {
+        url += `&entry.478817684=${encodeURIComponent(additionalMessage)}`;
+      }
+
+      console.log('Generated prefill URL:', url);
+      return url;
+    } catch (error) {
+      console.error('Failed to generate prefill URL:', error);
+      return originalUrl;
+    }
+  };
+
   const handleReset = () => {
     setIsLoggedIn(false);
     setUserProfile(null);
@@ -166,6 +209,8 @@ export default function Home() {
     setError(null);
     setFormUrl("https://docs.google.com/forms/d/e/1FAIpQLSeY6qq5SzebJ0wqfrT1AMdYzbJ1ts3qXeZy1bs8WddKSXXpqw/viewform");
     setAdditionalMessage("");
+    setShowEmbeddedForm(false);
+    setPrefillFormUrl("");
     liffManager.logout();
   };
 
@@ -377,32 +422,115 @@ export default function Home() {
               </div>
             </div>
 
-            <Button
-              onClick={handleSubmitForm}
-              disabled={!isLoggedIn || submitFormMutation.isPending || hasSubmitted}
-              className={cn(
-                "w-full font-medium py-3 px-6 rounded-lg mt-6 transition-all duration-200 min-h-[48px]",
-                isLoggedIn && !hasSubmitted
-                  ? "bg-google-blue hover:bg-blue-600 text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              )}
-              data-testid="button-submit-form"
-            >
-              {submitFormMutation.isPending ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>送信中...</span>
-                </div>
-              ) : hasSubmitted ? (
-                "送信完了"
-              ) : isLoggedIn ? (
-                "フォームにUIDを自動送信"
-              ) : (
-                "LINEログイン後に有効になります"
-              )}
-            </Button>
+            <div className="space-y-3">
+              <Button
+                onClick={handleShowEmbeddedForm}
+                disabled={!isLoggedIn || !formUrl.trim() || showEmbeddedForm}
+                className={cn(
+                  "w-full font-medium py-3 px-6 rounded-lg transition-all duration-200 min-h-[48px]",
+                  isLoggedIn && formUrl.trim() && !showEmbeddedForm
+                    ? "bg-green-600 hover:bg-green-700 text-white"
+                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                )}
+                data-testid="button-show-form"
+              >
+                {showEmbeddedForm ? (
+                  "フォーム表示中"
+                ) : isLoggedIn && formUrl.trim() ? (
+                  "フォームを開いて回答する"
+                ) : (
+                  "LINEログイン後に有効になります"
+                )}
+              </Button>
+
+              <Button
+                onClick={handleSubmitForm}
+                disabled={!isLoggedIn || submitFormMutation.isPending || hasSubmitted || !showEmbeddedForm}
+                variant="outline"
+                className={cn(
+                  "w-full font-medium py-2 px-4 rounded-lg transition-all duration-200",
+                  showEmbeddedForm && isLoggedIn
+                    ? "border-google-blue text-google-blue hover:bg-blue-50"
+                    : "border-gray-300 text-gray-500 cursor-not-allowed"
+                )}
+                data-testid="button-submit-form"
+              >
+                {submitFormMutation.isPending ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span>送信中...</span>
+                  </div>
+                ) : hasSubmitted ? (
+                  "送信完了"
+                ) : (
+                  "直接送信（フォーム回答不要）"
+                )}
+              </Button>
+            </div>
           </CardContent>
         </Card>
+
+        {/* Embedded Google Form */}
+        {showEmbeddedForm && prefillFormUrl && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Google フォーム</h3>
+                <Button
+                  onClick={() => setShowEmbeddedForm(false)}
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  閉じる
+                </Button>
+              </div>
+
+              <div className="mb-4 p-3 bg-green-50 rounded-lg">
+                <div className="flex items-start space-x-2">
+                  <svg className="w-4 h-4 text-green-500 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L9 8l-9 9z" />
+                  </svg>
+                  <p className="text-xs text-green-700">
+                    あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）が自動的に設定されています。
+                    フォームに回答して「送信」ボタンを押してください。
+                  </p>
+                </div>
+              </div>
+
+              <div className="border rounded-lg overflow-hidden">
+                <iframe
+                  src={prefillFormUrl}
+                  width="100%"
+                  height="600"
+                  frameBorder="0"
+                  marginHeight={0}
+                  marginWidth={0}
+                  className="w-full"
+                  title="Google Form"
+                >
+                  読み込み中...
+                </iframe>
+              </div>
+
+              <div className="mt-4 text-center">
+                <p className="text-sm text-gray-600 mb-2">
+                  フォーム内で「送信」ボタンを押すと回答が完了します
+                </p>
+                <Button
+                  onClick={() => {
+                    setHasSubmitted(true);
+                    setSubmissionTime(new Date());
+                    showToast('フォーム回答が完了しました', 'success');
+                  }}
+                  className="bg-google-blue hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg"
+                >
+                  回答完了として記録
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Success Card - shown after form submission */}
         {hasSubmitted && submissionTime && (
