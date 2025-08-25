@@ -146,7 +146,7 @@ export default function Home() {
       const separator = url.includes('?') ? '&' : '?';
 
       // Use detected entry ID or fallback to default
-      const userIdEntry = detectedEntries?.userId;
+      const userIdEntry = detectedEntries?.userId || 'entry.1587760013';
       url += `${separator}${userIdEntry}=${encodeURIComponent(userId)}`;
 
       // Add message entry if available (for future additional message features)
