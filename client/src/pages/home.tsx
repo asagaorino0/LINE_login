@@ -16,10 +16,12 @@ export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
-  const [formUrl, setFormUrl] = useState("https://docs.google.com/forms/d/e/1FAIpQLSeY6qq5SzebJ0wqfrT1AMdYzbJ1ts3qXeZy1bs8WddKSXXpqw/viewform");
+  const [formUrl, setFormUrl] = useState("");
   const [additionalMessage, setAdditionalMessage] = useState("");
   const [showEmbeddedForm, setShowEmbeddedForm] = useState(false);
   const [prefillFormUrl, setPrefillFormUrl] = useState("");
+  const [autoRedirect, setAutoRedirect] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submissionTime, setSubmissionTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,45 @@ export default function Home() {
 
     initLiff();
   }, []);
+
+  // URLパラメータからフォーム情報を読み取り
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const formParam = urlParams.get('form');
+    const redirectParam = urlParams.get('redirect');
+    const messageParam = urlParams.get('message');
+
+    if (formParam) {
+      try {
+        const decodedFormUrl = decodeURIComponent(formParam);
+        setFormUrl(decodedFormUrl);
+        setIsAutoMode(true);
+
+        if (redirectParam === 'true') {
+          setAutoRedirect(true);
+        }
+
+        if (messageParam) {
+          setAdditionalMessage(decodeURIComponent(messageParam));
+        }
+
+        console.log('Auto mode activated with form:', decodedFormUrl);
+      } catch (error) {
+        console.error('Failed to parse URL parameters:', error);
+      }
+    }
+  }, []);
+
+  // ログイン完了後の自動リダイレクト
+  useEffect(() => {
+    if (isLoggedIn && userProfile && autoRedirect && formUrl && !showEmbeddedForm) {
+      const timer = setTimeout(() => {
+        handleOpenFormInNewTab();
+      }, 1000); // 1秒後に自動的にフォームを開く
+
+      return () => clearTimeout(timer);
+    }
+  }, [isLoggedIn, userProfile, autoRedirect, formUrl, showEmbeddedForm]);
 
   const saveUserToBackend = async (profile: LiffProfile) => {
     try {
@@ -362,116 +403,183 @@ export default function Home() {
           </Card>
         )}
 
-        {/* Google Form URL Input Card */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-8 h-8 bg-google-blue rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Google フォーム自動送信</h3>
-            </div>
-
-            <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-              どんなGoogle Formsでも使用可能。あなたのLINE IDが自動的に回答に追加されます。
-            </p>
-
-            {isLoggedIn && userProfile && (
-              <div className="mb-6 p-3 bg-blue-50 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <svg className="w-4 h-4 text-blue-500 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+        {/* Auto Mode - Simple UI for end users */}
+        {isAutoMode && isLoggedIn && formUrl && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="text-xs text-blue-700">
-                    送信時にあなたのLINE ID（{userProfile.userId.slice(0, 8)}...）が自動的に追加されます
-                  </p>
                 </div>
-              </div>
-            )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Google Forms URL
-                </label>
-                <div className="relative">
-                  <Input
-                    type="url"
-                    value={formUrl}
-                    onChange={(e) => setFormUrl(e.target.value)}
-                    placeholder="https://forms.gle/... または https://docs.google.com/forms/..."
-                    className="pr-8"
-                    data-testid="input-form-url"
-                  />
-                  <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                </div>
-              </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">アンケートに回答</h3>
+                <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+                  ログインが完了しました。<br />
+                  アンケートフォームが開きます。
+                </p>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  追加メッセージ（オプション）
-                </label>
-                <Textarea
-                  value={additionalMessage}
-                  onChange={(e) => setAdditionalMessage(e.target.value)}
-                  rows={3}
-                  placeholder="フォームと一緒に送信する追加情報があれば入力してください"
-                  className="resize-none"
-                  data-testid="textarea-additional-message"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Button
-                onClick={handleOpenFormInNewTab}
-                disabled={!isLoggedIn || !formUrl.trim()}
-                className={cn(
-                  "w-full font-medium py-3 px-6 rounded-lg transition-all duration-200 min-h-[48px]",
-                  isLoggedIn && formUrl.trim()
-                    ? "bg-green-600 hover:bg-green-700 text-white"
-                    : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                )}
-                data-testid="button-show-form"
-              >
-                {isLoggedIn && formUrl.trim() ? (
-                  "フォームを新しいタブで開く"
-                ) : (
-                  "LINEログイン後に有効になります"
-                )}
-              </Button>
-
-              <Button
-                onClick={handleSubmitForm}
-                disabled={!isLoggedIn || submitFormMutation.isPending || hasSubmitted || !showEmbeddedForm}
-                variant="outline"
-                className={cn(
-                  "w-full font-medium py-2 px-4 rounded-lg transition-all duration-200",
-                  showEmbeddedForm && isLoggedIn
-                    ? "border-google-blue text-google-blue hover:bg-blue-50"
-                    : "border-gray-300 text-gray-500 cursor-not-allowed"
-                )}
-                data-testid="button-submit-form"
-              >
-                {submitFormMutation.isPending ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                    <span>送信中...</span>
+                {autoRedirect ? (
+                  <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                    <div className="flex items-center justify-center space-x-2 mb-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-sm text-blue-700">自動的にフォームを開いています...</span>
+                    </div>
                   </div>
-                ) : hasSubmitted ? (
-                  "送信完了"
                 ) : (
-                  "直接送信（フォーム回答不要）"
+                  <Button
+                    onClick={handleOpenFormInNewTab}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-lg"
+                  >
+                    アンケートフォームを開く
+                  </Button>
                 )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Management Mode - Full UI for administrators */}
+        {!isAutoMode && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-8 h-8 bg-google-blue rounded-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">管理者モード - フォーム設定</h3>
+              </div>
+
+              <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+                どんなGoogle Formsでも使用可能。あなたのLINE IDが自動的に回答に追加されます。
+              </p>
+
+              {isLoggedIn && userProfile && (
+                <div className="mb-6 p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-start space-x-2">
+                    <svg className="w-4 h-4 text-blue-500 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                    </svg>
+                    <p className="text-xs text-blue-700">
+                      送信時にあなたのLINE ID（{userProfile.userId.slice(0, 8)}...）が自動的に追加されます
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Google Forms URL
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type="url"
+                      value={formUrl}
+                      onChange={(e) => setFormUrl(e.target.value)}
+                      placeholder="https://forms.gle/... または https://docs.google.com/forms/..."
+                      className="pr-8"
+                      data-testid="input-form-url"
+                    />
+                    <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    追加メッセージ（オプション）
+                  </label>
+                  <Textarea
+                    value={additionalMessage}
+                    onChange={(e) => setAdditionalMessage(e.target.value)}
+                    rows={3}
+                    placeholder="フォームと一緒に送信する追加情報があれば入力してください"
+                    className="resize-none"
+                    data-testid="textarea-additional-message"
+                  />
+                </div>
+              </div>
+
+              {/* URL Generation for End Users */}
+              {formUrl.trim() && (
+                <div className="mb-6 p-4 bg-green-50 rounded-lg border">
+                  <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
+                  <p className="text-xs text-green-700 mb-3">
+                    このリンクを利用者に共有すると、ワンクリックでログイン→フォーム回答が可能です
+                  </p>
+                  <div className="bg-white rounded border p-3 mb-3">
+                    <code className="text-xs font-mono text-gray-800 break-all">
+                      {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
+                    </code>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                      navigator.clipboard.writeText(userLink);
+                      showToast('利用者向けリンクをコピーしました', 'success');
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-green-700 border-green-300 hover:bg-green-100"
+                  >
+                    <Copy className="w-3 h-3 mr-1" />
+                    リンクをコピー
+                  </Button>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <Button
+                  onClick={handleOpenFormInNewTab}
+                  disabled={!isLoggedIn || !formUrl.trim()}
+                  className={cn(
+                    "w-full font-medium py-3 px-6 rounded-lg transition-all duration-200 min-h-[48px]",
+                    isLoggedIn && formUrl.trim()
+                      ? "bg-green-600 hover:bg-green-700 text-white"
+                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  )}
+                  data-testid="button-show-form"
+                >
+                  {isLoggedIn && formUrl.trim() ? (
+                    "フォームを新しいタブで開く（テスト）"
+                  ) : (
+                    "LINEログイン後に有効になります"
+                  )}
+                </Button>
+
+                <Button
+                  onClick={handleSubmitForm}
+                  disabled={!isLoggedIn || submitFormMutation.isPending || hasSubmitted || !showEmbeddedForm}
+                  variant="outline"
+                  className={cn(
+                    "w-full font-medium py-2 px-4 rounded-lg transition-all duration-200",
+                    showEmbeddedForm && isLoggedIn
+                      ? "border-google-blue text-google-blue hover:bg-blue-50"
+                      : "border-gray-300 text-gray-500 cursor-not-allowed"
+                  )}
+                  data-testid="button-submit-form"
+                >
+                  {submitFormMutation.isPending ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span>送信中...</span>
+                    </div>
+                  ) : hasSubmitted ? (
+                    "送信完了"
+                  ) : (
+                    "直接送信（フォーム回答不要）"
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Form Opened Confirmation */}
         {showEmbeddedForm && (
