@@ -221,6 +221,26 @@ export default function Home() {
           </Card>
         )}
 
+        {/* Logged in but no form URL - show simple message */}
+        {isLoggedIn && userProfile && !formUrl && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">ログイン完了</h3>
+                <p className="text-gray-600 text-sm">
+                  フォームURLがパラメータに含まれていません。<br />
+                  正しいリンクからアクセスしてください。
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Error State - shown when login fails */}
         {error && (
           <Card className="mb-6 border-red-200 bg-red-50">
