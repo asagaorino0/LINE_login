@@ -153,26 +153,37 @@ export default function Home() {
 
   const generatePrefillUrl = (originalUrl: string, userId: string): string => {
     try {
-      // Google FormsのURLにプリフィルパラメータを追加
+      // Google Formsのプリフィル用URLを生成
       let url = originalUrl;
 
-      // URLに?が含まれているかチェック
-      const separator = url.includes('?') ? '&' : '?';
+      // Remove existing query parameters to ensure clean prefill
+      const baseUrl = url.split('?')[0];
 
       // Use detected entry ID or fallback to default
-      const userIdEntry = detectedEntries?.userId || 'entry.FALLBACK_DEFAULT';
-      url += `${separator}${userIdEntry}=${encodeURIComponent(userId)}`;
+      const userIdEntry = detectedEntries?.userId || 'entry.1587760013';
+
+      // Google Forms prefill format: baseUrl + ?usp=pp_url + &entry.ID=value
+      const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
 
       // Add message entry if available (for future additional message features)
       if (detectedEntries?.message) {
-        url += `&${detectedEntries.message}=`;
+        const finalUrl = `${prefillUrl}&${detectedEntries.message}=`;
+        console.log('Generated prefill URL with detected entries:', finalUrl, {
+          detectedEntries,
+          userIdEntry,
+          baseUrl,
+          originalUrl
+        });
+        return finalUrl;
       }
 
-      console.log('Generated prefill URL with detected entries:', url, {
+      console.log('Generated prefill URL with detected entries:', prefillUrl, {
         detectedEntries,
-        userIdEntry
+        userIdEntry,
+        baseUrl,
+        originalUrl
       });
-      return url;
+      return prefillUrl;
     } catch (error) {
       console.error('Failed to generate prefill URL:', error);
       return originalUrl;
