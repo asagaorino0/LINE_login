@@ -18,6 +18,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
 
   const { toast, showToast, hideToast } = useToastNotification();
 
@@ -116,6 +117,7 @@ export default function Home() {
 
     setIsDetecting(true);
     setDetectedEntries(null);
+    setLastDetectionResult(null);
 
     try {
       const result = await GoogleFormsManager.detectEntryIds(formUrl);
@@ -128,10 +130,21 @@ export default function Home() {
           message: result.message
         });
 
+        const detectionResult = {
+          userId: result.userId!,
+          message: result.message,
+          formUrl: formUrl
+        };
+
         setDetectedEntries({
           userId: result.userId,
           message: result.message
         });
+
+        // Save the detection result for immediate use
+        setLastDetectionResult(detectionResult);
+
+        console.log('💾 Saved detection result:', detectionResult);
 
         showToast(
           result.error
@@ -160,7 +173,26 @@ export default function Home() {
       const baseUrl = url.split('?')[0];
 
       // Use detected entry ID or fallback to default
-      const userIdEntry = detectedEntries?.userId || 'entry.1587760013';
+      // Priority: Use the most recently detected entry ID for this specific form URL
+      let userIdEntry = 'entry.1587760013'; // Default fallback
+
+      // Check if we have a recent detection result for this form URL
+      if (lastDetectionResult && lastDetectionResult.formUrl === originalUrl) {
+        userIdEntry = lastDetectionResult.userId;
+        console.log('🚀 Using fresh detection result:', lastDetectionResult);
+      } else if (detectedEntries?.userId) {
+        userIdEntry = detectedEntries.userId;
+        console.log('📋 Using stored state result:', detectedEntries);
+      }
+
+      console.log('🎯 Generating URL with entry ID:', {
+        userIdEntry,
+        detectedEntries,
+        lastDetectionResult,
+        hasDetectedEntries: !!detectedEntries,
+        originalUrl,
+        isMatchingUrl: lastDetectionResult?.formUrl === originalUrl
+      });
 
       // Google Forms prefill format: baseUrl + ?usp=pp_url + &entry.ID=value
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
@@ -360,6 +392,7 @@ export default function Home() {
                         setFormUrl(e.target.value);
                         // Reset detected entries when URL changes
                         if (detectedEntries) setDetectedEntries(null);
+                        if (lastDetectionResult) setLastDetectionResult(null);
                       }}
                       placeholder="https://docs.google.com/forms/d/..."
                       className="pr-8"
