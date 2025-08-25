@@ -1,0 +1,8 @@
+Update import paths to correctly reference project files
+
+Correctly resolve module paths in various client and server files to ensure proper application functionality.
+
+Replit-Commit-Author: Agent
+Replit-Commit-Session-Id: 516dccfb-fc10-407d-bcef-5dc6d3fa945b
+Replit-Commit-Checkpoint-Type: full_checkpoint
+Replit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/e921978d-045d-4c8e-abc0-2dc0ed8389f7/516dccfb-fc10-407d-bcef-5dc6d3fa945b/Ph8mR4y
