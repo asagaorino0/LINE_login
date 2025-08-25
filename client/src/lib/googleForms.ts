@@ -18,26 +18,30 @@ export class GoogleFormsManager {
 
       // Create form data for submission
       const formData = new FormData();
-      
+
       // Try to get entry IDs from environment first, then try detection
       let userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY;
       let messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY;
-      
+
       // If no environment variables, try to detect from form or use test submission
       if (!userIdEntryId || !messageEntryId) {
         console.log('No environment entry IDs found, trying test submission method...');
+        console.log('Environment USERID:', import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY);
+        console.log('Environment MESSAGE:', import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY);
         const detectedIds = await this.detectEntryIdsViaTest(data.formUrl);
         userIdEntryId = userIdEntryId || detectedIds.userId || 'entry.1587760013';
         messageEntryId = messageEntryId || detectedIds.message || 'entry.478817684';
+        console.log('Final userIdEntry:', userIdEntryId);
+        console.log('Final messageEntry:', messageEntryId);
       }
-      
+
       console.log('Submitting to Google Forms with:', {
         userIdEntry: userIdEntryId,
         messageEntry: messageEntryId,
         userId: data.userId,
         message: data.additionalMessage
       });
-      
+
       formData.append(userIdEntryId, data.userId);
       if (data.additionalMessage) {
         formData.append(messageEntryId, data.additionalMessage);
@@ -45,22 +49,22 @@ export class GoogleFormsManager {
 
       // Submit to Google Forms - preserve URL structure (/d/e/ vs /d/)
       const submitUrl = this.buildSubmitUrl(data.formUrl, formId);
-      
+
       console.log('Attempting submission to:', submitUrl);
       console.log('Form data entries:');
       for (const [key, value] of formData.entries()) {
         console.log(`  ${key}: ${value}`);
       }
-      
+
       try {
         const response = await fetch(submitUrl, {
           method: 'POST',
           body: formData,
           mode: 'no-cors', // Google Forms requires no-cors mode
         });
-        
+
         console.log('Fetch completed, no-cors response status unknown');
-        
+
         // Note: With no-cors mode, we can't read the response
         // We assume success if no error was thrown
         return {
@@ -80,13 +84,13 @@ export class GoogleFormsManager {
   private static async detectEntryIdsViaTest(formUrl: string): Promise<{ userId?: string; message?: string }> {
     try {
       console.log('Attempting to detect entry IDs for form:', formUrl);
-      
+
       // Try common entry ID patterns based on Google Forms structure
       const formId = this.extractFormId(formUrl);
       if (!formId) {
         throw new Error('Could not extract form ID');
       }
-      
+
       // For now, we'll need manual configuration or user input
       // Return empty to force manual configuration
       console.log('Entry ID detection requires manual configuration');
