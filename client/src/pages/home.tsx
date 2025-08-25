@@ -109,6 +109,11 @@ export default function Home() {
       return;
     }
 
+    console.log('🔍 STARTING DETECTION');
+    console.log('📝 Input form URL from state:', formUrl);
+    console.log('📝 URL length:', formUrl.length);
+    console.log('📝 URL contains d/e/:', formUrl.includes('/d/e/'));
+
     setIsDetecting(true);
     setDetectedEntries(null);
 
