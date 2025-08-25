@@ -8,8 +8,11 @@ export class GoogleFormsManager {
   static async submitToForm(data: GoogleFormsSubmission): Promise<{ success: boolean; timestamp: Date }> {
     try {
       // Parse the Google Form URL to extract form ID and create submission URL
+      console.log('Processing form URL:', data.formUrl);
       const formId = this.extractFormId(data.formUrl);
+      console.log('Extracted form ID:', formId);
       if (!formId) {
+        console.error('Failed to extract form ID from URL:', data.formUrl);
         throw new Error('Invalid Google Form URL format');
       }
 
