@@ -642,7 +642,14 @@ export default function Home() {
                   </Button>
 
                   <div className="mt-3 p-2 bg-gray-100 rounded text-xs text-gray-600">
-                    <p className="font-mono break-all">{prefillFormUrl}</p>
+                    <a
+                      href={prefillFormUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono break-all text-blue-600 hover:text-blue-800 underline"
+                    >
+                      {prefillFormUrl}
+                    </a>
                   </div>
                 </div>
 
