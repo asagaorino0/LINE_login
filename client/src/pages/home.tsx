@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
-import { RefreshCw, Github, Shield, HelpCircle } from "lucide-react";
+import { RefreshCw, Github, Shield, HelpCircle, Copy, ExternalLink } from "lucide-react";
 import { liffManager, type LiffProfile } from "../lib/liff";
 import { apiRequest } from "../lib/queryClient";
 import { ToastNotification, useToastNotification } from "../components/ui/toast-notification";
@@ -260,6 +261,63 @@ export default function Home() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   もう一度試す
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Simple Admin Mode - Only when not auto mode */}
+        {!isAutoMode && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="text-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
+                <p className="text-gray-600 text-sm">Google Formsのリンクを生成します</p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Google Forms URL
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type="url"
+                      value={formUrl}
+                      onChange={(e) => setFormUrl(e.target.value)}
+                      placeholder="https://docs.google.com/forms/d/..."
+                      className="pr-8"
+                    />
+                    <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  </div>
+                </div>
+
+                {formUrl.trim() && (
+                  <div className="p-4 bg-green-50 rounded-lg border">
+                    <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
+                    <p className="text-xs text-green-700 mb-3">
+                      このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
+                    </p>
+                    <div className="bg-white rounded border p-3 mb-3">
+                      <code className="text-xs font-mono text-gray-800 break-all">
+                        {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
+                      </code>
+                    </div>
+                    <Button
+                      onClick={() => {
+                        const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                        navigator.clipboard.writeText(userLink);
+                        showToast('利用者向けリンクをコピーしました', 'success');
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-green-700 border-green-300 hover:bg-green-100"
+                    >
+                      <Copy className="w-3 h-3 mr-1" />
+                      リンクをコピー
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
