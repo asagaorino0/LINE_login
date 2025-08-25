@@ -15,7 +15,6 @@ export default function Home() {
   const [formUrl, setFormUrl] = useState("");
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const { toast, showToast, hideToast } = useToastNotification();
 
   // Initialize LIFF on component mount
