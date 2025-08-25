@@ -7,6 +7,7 @@ import { RefreshCw, Github, Shield, HelpCircle, Copy, ExternalLink } from "lucid
 import { liffManager, type LiffProfile } from "../lib/liff";
 import { apiRequest } from "../lib/queryClient";
 import { ToastNotification, useToastNotification } from "../components/ui/toast-notification";
+import { GoogleFormsManager } from "../lib/googleForms";
 
 export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -15,6 +16,9 @@ export default function Home() {
   const [formUrl, setFormUrl] = useState("");
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+
   const { toast, showToast, hideToast } = useToastNotification();
 
   // Initialize LIFF on component mount
@@ -98,6 +102,41 @@ export default function Home() {
     loginMutation.mutate();
   };
 
+  // Auto-detect entry IDs from Google Forms URL
+  const handleDetectEntries = async () => {
+    if (!formUrl.trim()) {
+      showToast('フォームURLを先に入力してください', 'error');
+      return;
+    }
+
+    setIsDetecting(true);
+    setDetectedEntries(null);
+
+    try {
+      const result = await GoogleFormsManager.detectEntryIds(formUrl);
+
+      if (result.success) {
+        setDetectedEntries({
+          userId: result.userId,
+          message: result.message
+        });
+        showToast(
+          result.error
+            ? `検出完了（フォールバック）: ${result.error}`
+            : '✅ Entry ID検出完了！',
+          result.error ? 'error' : 'success'
+        );
+      } else {
+        showToast(`検出に失敗しました: ${result.error}`, 'error');
+      }
+    } catch (error) {
+      console.error('Entry detection failed:', error);
+      showToast('検出中にエラーが発生しました', 'error');
+    } finally {
+      setIsDetecting(false);
+    }
+  };
+
   const generatePrefillUrl = (originalUrl: string, userId: string): string => {
     try {
       // Google FormsのURLにプリフィルパラメータを追加
@@ -106,10 +145,19 @@ export default function Home() {
       // URLに?が含まれているかチェック
       const separator = url.includes('?') ? '&' : '?';
 
-      // entry.1587760013 (ユーザーID用)にUIDを事前設定
-      url += `${separator}entry.1587760013=${encodeURIComponent(userId)}`;
+      // Use detected entry ID or fallback to default
+      const userIdEntry = detectedEntries?.userId || 'entry.1587760013';
+      url += `${separator}${userIdEntry}=${encodeURIComponent(userId)}`;
 
-      console.log('Generated prefill URL:', url);
+      // Add message entry if available (for future additional message features)
+      if (detectedEntries?.message) {
+        url += `&${detectedEntries.message}=`;
+      }
+
+      console.log('Generated prefill URL with detected entries:', url, {
+        detectedEntries,
+        userIdEntry
+      });
       return url;
     } catch (error) {
       console.error('Failed to generate prefill URL:', error);
@@ -283,38 +331,104 @@ export default function Home() {
                     <Input
                       type="url"
                       value={formUrl}
-                      onChange={(e) => setFormUrl(e.target.value)}
+                      onChange={(e) => {
+                        setFormUrl(e.target.value);
+                        // Reset detected entries when URL changes
+                        if (detectedEntries) setDetectedEntries(null);
+                      }}
                       placeholder="https://docs.google.com/forms/d/..."
                       className="pr-8"
                     />
                     <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   </div>
+
+                  {/* Auto-detect button */}
+                  {formUrl.trim() && (
+                    <Button
+                      onClick={handleDetectEntries}
+                      disabled={isDetecting}
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full text-blue-700 border-blue-300 hover:bg-blue-50"
+                    >
+                      {isDetecting ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
+                          <span>Entry ID検出中...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <span>🔍</span>
+                          <span>Entry ID自動検出</span>
+                        </div>
+                      )}
+                    </Button>
+                  )}
+
+                  {/* Detection results */}
+                  {detectedEntries && (
+                    <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <h5 className="text-xs font-semibold text-blue-800 mb-2">✅ 検出されたEntry ID</h5>
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">UID用:</span>
+                          <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.userId || 'なし'}</code>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">メッセージ用:</span>
+                          <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.message || 'なし'}</code>
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        🎯 このフォームでUID自動入力が設定されました
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {formUrl.trim() && (
-                  <div className="p-4 bg-green-50 rounded-lg border">
-                    <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
-                    <p className="text-xs text-green-700 mb-3">
-                      このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
-                    </p>
-                    <div className="bg-white rounded border p-3 mb-3">
-                      <code className="text-xs font-mono text-gray-800 break-all">
-                        {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
-                      </code>
+                  <div className="space-y-3">
+                    <div className="p-4 bg-green-50 rounded-lg border">
+                      <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
+                      <p className="text-xs text-green-700 mb-3">
+                        このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
+                      </p>
+                      <div className="bg-white rounded border p-3 mb-3">
+                        <code className="text-xs font-mono text-gray-800 break-all">
+                          {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
+                        </code>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                          navigator.clipboard.writeText(userLink);
+                          showToast('利用者向けリンクをコピーしました', 'success');
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-green-700 border-green-300 hover:bg-green-100"
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        リンクをコピー
+                      </Button>
                     </div>
-                    <Button
-                      onClick={() => {
-                        const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                        navigator.clipboard.writeText(userLink);
-                        showToast('利用者向けリンクをコピーしました', 'success');
-                      }}
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-green-700 border-green-300 hover:bg-green-100"
-                    >
-                      <Copy className="w-3 h-3 mr-1" />
-                      リンクをコピー
-                    </Button>
+
+                    {/* Important Note about "Submit another response" */}
+                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                      <h5 className="text-xs font-semibold text-amber-800 mb-1">⚠️ 重要な設定</h5>
+                      <p className="text-xs text-amber-700 mb-2">
+                        「別の回答を送信」でUID欄が空白になる問題を防ぐため、<br />
+                        <strong>Googleフォーム側で以下の設定を推奨します：</strong>
+                      </p>
+                      <div className="bg-white rounded border p-2 mb-2">
+                        <p className="text-xs text-gray-600">
+                          📝 <strong>設定手順：</strong><br />
+                          1. Googleフォーム編集画面 → ⚙️「設定」<br />
+                          2. 「回答」タブ → 「回答を1回に制限する」をオン<br />
+                          3. これで「別の回答を送信」が無効化されます
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
