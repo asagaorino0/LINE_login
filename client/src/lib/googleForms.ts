@@ -43,18 +43,31 @@ export class GoogleFormsManager {
       // Submit to Google Forms
       const submitUrl = `https://docs.google.com/forms/d/${formId}/formResponse`;
       
-      const response = await fetch(submitUrl, {
-        method: 'POST',
-        body: formData,
-        mode: 'no-cors', // Google Forms requires no-cors mode
-      });
-
-      // Note: With no-cors mode, we can't read the response
-      // We assume success if no error was thrown
-      return {
-        success: true,
-        timestamp: new Date(),
-      };
+      console.log('Attempting submission to:', submitUrl);
+      console.log('Form data entries:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value}`);
+      }
+      
+      try {
+        const response = await fetch(submitUrl, {
+          method: 'POST',
+          body: formData,
+          mode: 'no-cors', // Google Forms requires no-cors mode
+        });
+        
+        console.log('Fetch completed, no-cors response status unknown');
+        
+        // Note: With no-cors mode, we can't read the response
+        // We assume success if no error was thrown
+        return {
+          success: true,
+          timestamp: new Date(),
+        };
+      } catch (fetchError) {
+        console.error('Fetch error occurred:', fetchError);
+        throw fetchError;
+      }
     } catch (error) {
       console.error('Google Forms submission failed:', error);
       throw new Error('フォーム送信に失敗しました。URLを確認してください。');
