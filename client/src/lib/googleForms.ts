@@ -19,12 +19,15 @@ export class GoogleFormsManager {
       // Create form data for submission
       const formData = new FormData();
 
-      // FORCE NEW ENTRY IDS - Override everything for new form
-      console.log('=== FORCING NEW ENTRY IDS ===');
-      let userIdEntryId = 'entry.1587760013';  // Force new form entry ID
-      let messageEntryId = 'entry.478817684';  // Force new form entry ID
-      console.log('FORCED userIdEntry:', userIdEntryId);
-      console.log('FORCED messageEntry:', messageEntryId);
+      // Try to get entry IDs from environment first, then use default for new form
+      let userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY;
+      let messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY;
+
+      // If no environment variables, use the working entry IDs for the new form
+      if (!userIdEntryId || !messageEntryId) {
+        userIdEntryId = userIdEntryId || 'entry.1587760013';
+        messageEntryId = messageEntryId || 'entry.478817684';
+      }
 
       console.log('Submitting to Google Forms with:', {
         userIdEntry: userIdEntryId,
