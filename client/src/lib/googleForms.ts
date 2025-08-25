@@ -106,21 +106,79 @@ export class GoogleFormsManager {
           throw new Error('No HTML content received from proxy');
         }
 
-        // Extract entry IDs with multiple patterns
+        // Extract entry IDs with comprehensive patterns
+        console.log('🔍 Analyzing HTML structure...');
+
+        // Log a sample of HTML to understand structure (first 1000 chars)
+        console.log('📄 HTML sample (first 1000 chars):', html.substring(0, 1000));
+
+        // Also search for specific form-related content
+        const formSections = [
+          html.indexOf('entry.'),
+          html.indexOf('formResponse'),
+          html.indexOf('FB_PUBLIC_LOAD_DATA'),
+          html.indexOf('data-params'),
+          html.indexOf('name=')
+        ].filter(i => i !== -1);
+
+        console.log('📍 Form-related content positions:', formSections);
+
+        // Extract sections around entry points
+        formSections.forEach((pos, index) => {
+          if (pos > 0) {
+            const section = html.substring(Math.max(0, pos - 100), pos + 200);
+            console.log(`📄 Section ${index + 1} around position ${pos}:`, section);
+          }
+        });
+
+        // Comprehensive patterns for modern Google Forms
         const patterns = [
+          // Traditional patterns
           /name="entry\.(\d+)"/g,
           /entry\.(\d+)/g,
-          /"entry\.(\d+)"/g
+          /"entry\.(\d+)"/g,
+          // Modern React/JS patterns
+          /entry_(\d+)/g,
+          /'entry\.(\d+)'/g,
+          /data-params=".*?entry\.(\d+)/g,
+          // JSON data patterns
+          /\\"entry\.(\d+)\\"/g,
+          /\[null,null,(\d+),/g,  // Google's internal format
+          // Form action patterns
+          /formResponse.*?entry\.(\d+)/g,
+          // Embedded script patterns
+          /FB_PUBLIC_LOAD_DATA_.*?(\d{8,})/g
         ];
 
         let allEntries = [];
-        for (const pattern of patterns) {
+
+        for (let i = 0; i < patterns.length; i++) {
+          const pattern = patterns[i];
           const matches = [...html.matchAll(pattern)];
-          allEntries.push(...matches.map(m => `entry.${m[1]}`));
+          const found = matches.map(m => {
+            // Handle different capture groups
+            const entryNum = m[1];
+            return entryNum.length >= 8 ? `entry.${entryNum}` : null;
+          }).filter(Boolean);
+
+          console.log(`🎯 Pattern ${i + 1} found:`, found);
+          allEntries.push(...found);
+        }
+
+        // Also try to find the form's FB_PUBLIC_LOAD_DATA which contains entry info
+        const fbDataMatch = html.match(/FB_PUBLIC_LOAD_DATA_\[\[".*?",.*?\[.*?\]/);
+        if (fbDataMatch) {
+          console.log('🔍 Found FB_PUBLIC_LOAD_DATA, extracting...');
+          const fbData = fbDataMatch[0];
+          const numberMatches = fbData.match(/(\d{8,})/g);
+          if (numberMatches) {
+            console.log('📊 FB data numbers:', numberMatches);
+            allEntries.push(...numberMatches.map((n: string) => `entry.${n}`));
+          }
         }
 
         const uniqueEntries = [...new Set(allEntries)];
-        console.log('🎯 Found entry IDs with patterns:', uniqueEntries);
+        console.log('🎯 All found entry IDs:', uniqueEntries);
 
         if (uniqueEntries.length === 0) {
           throw new Error('No entry IDs found in HTML');
@@ -153,10 +211,10 @@ export class GoogleFormsManager {
   }
 
   private static getCommonEntryPatterns(): { userId: string; message: string } {
-    // Common patterns observed in Google Forms
+    // Fallback patterns - これが表示されたら検出失敗
     return {
-      userId: 'entry.1587760013',
-      message: 'entry.478817684'
+      userId: 'entry.FALLBACK001',
+      message: 'entry.FALLBACK002'
     };
   }
 
