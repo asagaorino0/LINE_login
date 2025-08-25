@@ -158,8 +158,8 @@ export default function Home() {
       </header>
 
       <main className="max-w-md mx-auto px-4 py-6">
-        {/* Welcome Card - shown when not authenticated */}
-        {!isLoggedIn && (
+        {/* Welcome Card - shown when not authenticated and in auto mode */}
+        {!isLoggedIn && isAutoMode && (
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="text-center">
