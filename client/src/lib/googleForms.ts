@@ -24,8 +24,8 @@ export class GoogleFormsManager {
       if (!userIdEntryId || !messageEntryId) {
         console.log('No environment entry IDs found, trying test submission method...');
         const detectedIds = await this.detectEntryIdsViaTest(data.formUrl);
-        userIdEntryId = userIdEntryId || detectedIds.userId || 'entry.000000001';
-        messageEntryId = messageEntryId || detectedIds.message || 'entry.000000002';
+        userIdEntryId = userIdEntryId || detectedIds.userId || 'entry.874267761';
+        messageEntryId = messageEntryId || detectedIds.message || 'entry.615708190';
       }
       
       console.log('Submitting to Google Forms with:', {
