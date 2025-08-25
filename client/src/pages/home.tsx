@@ -104,7 +104,7 @@ export default function Home() {
       await apiRequest('POST', '/api/form-submissions', {
         lineUserId: userProfile.userId,
         formUrl: formUrl,
-        additionalMessage: additionalMessage || null,
+        additionalMessage: additionalMessage || undefined,
       });
 
       return result;
