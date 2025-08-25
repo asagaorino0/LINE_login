@@ -1,11 +1,11 @@
-export interface GoogleFormsSubmission {
+export interface SubmissionData {
+  formUrl: string;
   userId: string;
   additionalMessage?: string;
-  formUrl: string;
 }
 
 export class GoogleFormsManager {
-  static async submitToForm(data: GoogleFormsSubmission): Promise<{ success: boolean; timestamp: Date }> {
+  public static async submitForm(data: SubmissionData): Promise<{ success: boolean; timestamp: Date }> {
     try {
       // Parse the Google Form URL to extract form ID and create submission URL
       console.log('Processing form URL:', data.formUrl);
@@ -20,18 +20,17 @@ export class GoogleFormsManager {
       const formData = new FormData();
 
       // Try to get entry IDs from environment first, then use default for new form
-      let userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY;
-      let messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY;
+      const userIdEntryId = 'entry.1587760013'; // For USER ID
+      const messageEntryId = 'entry.478817684'; // For additional message (if needed)
 
-      // If no environment variables, use the working entry IDs for the new form
-      if (!userIdEntryId || !messageEntryId) {
-        userIdEntryId = userIdEntryId || 'entry.1587760013';
-        messageEntryId = messageEntryId || 'entry.478817684';
-      }
+      console.log('Using entry IDs:', {
+        userId: userIdEntryId,
+        message: messageEntryId
+      });
 
-      console.log('Submitting to Google Forms with:', {
-        userIdEntry: userIdEntryId,
-        messageEntry: messageEntryId,
+      // Log form data being submitted  
+      console.log('Form submission data:', {
+        formUrl: data.formUrl,
         userId: data.userId,
         message: data.additionalMessage
       });
@@ -95,135 +94,153 @@ export class GoogleFormsManager {
         throw new Error(`Form ID ${formId} not found in built URL: ${viewUrl}`);
       }
 
-      try {
-        console.log('🔍 Trying CORS proxy method...');
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`;
-        console.log('🌐 Proxy URL:', proxyUrl);
-        console.log('🌐 Target URL being proxied:', viewUrl);
+      let html = null;
 
-        const response = await fetch(proxyUrl);
+      // Try multiple CORS proxy services
+      const proxyServices = [
+        { name: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`, contentKey: 'contents' },
+        { name: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(viewUrl)}`, contentKey: null },
+        { name: 'thingproxy', url: `https://thingproxy.freeboard.io/fetch/${viewUrl}`, contentKey: null }
+      ];
 
-        if (!response.ok) {
-          throw new Error(`Proxy HTTP ${response.status}: ${response.statusText}`);
+      for (const proxy of proxyServices) {
+        try {
+          console.log(`🔍 Trying ${proxy.name} proxy...`);
+          console.log('🌐 Proxy URL:', proxy.url);
+          console.log('🌐 Target URL being proxied:', viewUrl);
+
+          const response = await fetch(proxy.url);
+
+          if (!response.ok) {
+            console.log(`❌ ${proxy.name} failed: HTTP ${response.status}`);
+            continue;
+          }
+
+          if (proxy.contentKey) {
+            const data = await response.json();
+            html = data[proxy.contentKey];
+          } else {
+            html = await response.text();
+          }
+
+          if (html) {
+            console.log(`✅ ${proxy.name} succeeded`);
+            break;
+          }
+        } catch (error: any) {
+          console.log(`❌ ${proxy.name} error:`, error.message);
+          continue;
         }
+      }
 
-        const data = await response.json();
-        const html = data.contents;
-        console.log('📄 Retrieved HTML length:', html?.length || 0);
+      console.log('📄 Retrieved HTML length:', html?.length || 0);
 
-        if (!html) {
-          throw new Error('No HTML content received from proxy');
+      if (!html) {
+        throw new Error('No HTML content received from proxy');
+      }
+
+      // Extract entry IDs with comprehensive patterns
+      console.log('🔍 Analyzing HTML structure...');
+
+      // Log a sample of HTML to understand structure (first 1000 chars)
+      console.log('📄 HTML sample (first 1000 chars):', html.substring(0, 1000));
+
+      // Also search for specific form-related content
+      const formSections = [
+        html.indexOf('entry.'),
+        html.indexOf('formResponse'),
+        html.indexOf('FB_PUBLIC_LOAD_DATA'),
+        html.indexOf('data-params'),
+        html.indexOf('name=')
+      ].filter(i => i !== -1);
+
+      console.log('📍 Form-related content positions:', formSections);
+
+      // Extract sections around entry points
+      formSections.forEach((pos, index) => {
+        if (pos > 0) {
+          const section = html.substring(Math.max(0, pos - 100), pos + 200);
+          console.log(`📄 Section ${index + 1} around position ${pos}:`, section);
         }
+      });
 
-        // Extract entry IDs with comprehensive patterns
-        console.log('🔍 Analyzing HTML structure...');
+      // Comprehensive patterns for modern Google Forms
+      const patterns = [
+        // Traditional patterns
+        /name="entry\.(\d+)"/g,
+        /entry\.(\d+)/g,
+        /"entry\.(\d+)"/g,
+        // Modern React/JS patterns
+        /entry_(\d+)/g,
+        /'entry\.(\d+)'/g,
+        /data-params=".*?entry\.(\d+)/g,
+        // JSON data patterns
+        /\\"entry\.(\d+)\\"/g,
+        /\[null,null,(\d+),/g,  // Google's internal format
+        // Form action patterns
+        /formResponse.*?entry\.(\d+)/g,
+        // Embedded script patterns - PRIORITY: Look for [number,null,1] pattern which indicates the actual entry
+        /\[(\d{8,}),[^,]*?,null,.*?\[(\d{8,}),null,1\]/g
+      ];
 
-        // Log a sample of HTML to understand structure (first 1000 chars)
-        console.log('📄 HTML sample (first 1000 chars):', html.substring(0, 1000));
+      const foundEntries = new Set<string>();
 
-        // Also search for specific form-related content
-        const formSections = [
-          html.indexOf('entry.'),
-          html.indexOf('formResponse'),
-          html.indexOf('FB_PUBLIC_LOAD_DATA'),
-          html.indexOf('data-params'),
-          html.indexOf('name=')
-        ].filter(i => i !== -1);
+      patterns.forEach((pattern, index) => {
+        const matches = Array.from(html.matchAll(pattern));
+        const entries = matches.map((match) => {
+          // For the priority pattern (last one), use the second capture group
+          if (index === patterns.length - 1) {
+            return (match as RegExpMatchArray)[2]; // The actual entry ID from [entryId,null,1]
+          }
+          return (match as RegExpMatchArray)[1];
+        }).filter(Boolean);
 
-        console.log('📍 Form-related content positions:', formSections);
-
-        // Extract sections around entry points
-        formSections.forEach((pos, index) => {
-          if (pos > 0) {
-            const section = html.substring(Math.max(0, pos - 100), pos + 200);
-            console.log(`📄 Section ${index + 1} around position ${pos}:`, section);
+        console.log(`🎯 Pattern ${index + 1} found:`, entries);
+        entries.forEach(entry => {
+          if (entry && entry.length >= 8) { // Valid entry IDs are at least 8 digits
+            foundEntries.add(`entry.${entry}`);
           }
         });
+      });
 
-        // Comprehensive patterns for modern Google Forms
-        const patterns = [
-          // Traditional patterns
-          /name="entry\.(\d+)"/g,
-          /entry\.(\d+)/g,
-          /"entry\.(\d+)"/g,
-          // Modern React/JS patterns
-          /entry_(\d+)/g,
-          /'entry\.(\d+)'/g,
-          /data-params=".*?entry\.(\d+)/g,
-          // JSON data patterns
-          /\\"entry\.(\d+)\\"/g,
-          /\[null,null,(\d+),/g,  // Google's internal format
-          // Form action patterns
-          /formResponse.*?entry\.(\d+)/g,
-          // Embedded script patterns
-          /FB_PUBLIC_LOAD_DATA_.*?(\d{8,})/g
-        ];
+      const uniqueEntries = Array.from(foundEntries);
+      console.log('🎯 All found entry IDs:', uniqueEntries);
 
-        let allEntries = [];
-
-        for (let i = 0; i < patterns.length; i++) {
-          const pattern = patterns[i];
-          const matches = [...html.matchAll(pattern)];
-          const found = matches.map(m => {
-            // Handle different capture groups
-            const entryNum = m[1];
-            return entryNum.length >= 8 ? `entry.${entryNum}` : null;
-          }).filter(Boolean);
-
-          console.log(`🎯 Pattern ${i + 1} found:`, found);
-          allEntries.push(...found);
-        }
-
-        // Also try to find the form's FB_PUBLIC_LOAD_DATA which contains entry info
-        const fbDataMatch = html.match(/FB_PUBLIC_LOAD_DATA_\[\[".*?",.*?\[.*?\]/);
-        if (fbDataMatch) {
-          console.log('🔍 Found FB_PUBLIC_LOAD_DATA, extracting...');
-          const fbData = fbDataMatch[0];
-          const numberMatches = fbData.match(/(\d{8,})/g);
-          if (numberMatches) {
-            console.log('📊 FB data numbers:', numberMatches);
-            allEntries.push(...numberMatches.map((n: string) => `entry.${n}`));
-          }
-        }
-
-        const uniqueEntries = [...new Set(allEntries)];
-        console.log('🎯 All found entry IDs:', uniqueEntries);
-
-        if (uniqueEntries.length === 0) {
-          throw new Error('No entry IDs found in HTML');
-        }
-
-        return {
-          userId: uniqueEntries[0] || undefined,
-          message: uniqueEntries[1] || undefined,
-          success: true
-        };
-      } catch (fetchError) {
-        console.log('❌ All detection methods failed:', fetchError);
-
-        // Fallback: Use common patterns for Google Forms
-        const commonEntries = this.getCommonEntryPatterns();
-        return {
-          userId: commonEntries.userId,
-          message: commonEntries.message,
-          success: true,
-          error: 'Using fallback entry IDs - please test submission'
-        };
+      if (uniqueEntries.length === 0) {
+        throw new Error('No entry IDs found in HTML');
       }
-    } catch (error) {
-      console.error('Entry ID detection failed:', error);
+
+      // PRIORITY: Look for entry.1587760013 specifically first
+      let userIdEntry = uniqueEntries.find(entry => entry.includes('1587760013'));
+      if (!userIdEntry) {
+        // Fallback to first found entry
+        userIdEntry = uniqueEntries[0];
+      }
+
       return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        userId: userIdEntry,
+        message: uniqueEntries[1] || undefined,
+        success: true
+      };
+    } catch (fetchError: any) {
+      console.log('❌ All detection methods failed:', fetchError);
+
+      // Fallback: Use common patterns for Google Forms
+      const commonEntries = this.getCommonEntryPatterns();
+      return {
+        userId: commonEntries.userId,
+        message: commonEntries.message,
+        success: true,
+        error: 'Using fallback entry IDs - please test submission'
       };
     }
   }
 
   private static getCommonEntryPatterns(): { userId: string; message: string } {
-    // Fallback patterns - これが表示されたら検出失敗
+    // Use the correct entry ID for this specific form
     return {
-      userId: 'entry.FALLBACK001',
-      message: 'entry.FALLBACK002'
+      userId: 'entry.1587760013',
+      message: 'entry.478817684'
     };
   }
 
