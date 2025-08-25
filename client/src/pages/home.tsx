@@ -480,30 +480,32 @@ export default function Home() {
 
                 {formUrl.trim() && (
                   <div className="space-y-3">
-                    <div className="p-4 bg-green-50 rounded-lg border">
-                      <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
-                      <p className="text-xs text-green-700 mb-3">
-                        このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
-                      </p>
-                      <div className="bg-white rounded border p-3 mb-3">
-                        <code className="text-xs font-mono text-gray-800 break-all">
-                          {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
-                        </code>
+                    {detectedEntries && (
+                      <div className="p-4 bg-green-50 rounded-lg border">
+                        <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
+                        <p className="text-xs text-green-700 mb-3">
+                          このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
+                        </p>
+                        <div className="bg-white rounded border p-3 mb-3">
+                          <code className="text-xs font-mono text-gray-800 break-all">
+                            {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
+                          </code>
+                        </div>
+                        <Button
+                          onClick={() => {
+                            const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                            navigator.clipboard.writeText(userLink);
+                            showToast('利用者向けリンクをコピーしました', 'success');
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-green-700 border-green-300 hover:bg-green-100"
+                        >
+                          <Copy className="w-3 h-3 mr-1" />
+                          リンクをコピー
+                        </Button>
                       </div>
-                      <Button
-                        onClick={() => {
-                          const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                          navigator.clipboard.writeText(userLink);
-                          showToast('利用者向けリンクをコピーしました', 'success');
-                        }}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-green-700 border-green-300 hover:bg-green-100"
-                      >
-                        <Copy className="w-3 h-3 mr-1" />
-                        リンクをコピー
-                      </Button>
-                    </div>
+                    )}
 
                     {/* Important Note about "Submit another response" */}
                     <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
