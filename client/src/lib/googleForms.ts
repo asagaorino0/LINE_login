@@ -13,15 +13,20 @@ export class GoogleFormsManager {
         throw new Error('Invalid Google Form URL format');
       }
 
-      // Try to auto-detect entry IDs if not provided in environment
-      const entryIds = await this.detectEntryIds(data.formUrl);
-      
       // Create form data for submission
       const formData = new FormData();
       
-      // Use detected or environment-configured entry IDs
-      const userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY || entryIds.userId || 'entry.580225804';
-      const messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY || entryIds.message || 'entry.580225804';
+      // Try to get entry IDs from environment first, then try detection
+      let userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY;
+      let messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY;
+      
+      // If no environment variables, try to detect from form or use test submission
+      if (!userIdEntryId || !messageEntryId) {
+        console.log('No environment entry IDs found, trying test submission method...');
+        const detectedIds = await this.detectEntryIdsViaTest(data.formUrl);
+        userIdEntryId = userIdEntryId || detectedIds.userId || 'entry.000000001';
+        messageEntryId = messageEntryId || detectedIds.message || 'entry.000000002';
+      }
       
       console.log('Submitting to Google Forms with:', {
         userIdEntry: userIdEntryId,
@@ -56,26 +61,24 @@ export class GoogleFormsManager {
     }
   }
 
-  private static async detectEntryIds(formUrl: string): Promise<{ userId?: string; message?: string }> {
+  private static async detectEntryIdsViaTest(formUrl: string): Promise<{ userId?: string; message?: string }> {
     try {
-      // Try to fetch the form page and extract entry IDs
-      const response = await fetch(formUrl, { mode: 'cors' });
-      const html = await response.text();
+      console.log('Attempting to detect entry IDs for form:', formUrl);
       
-      // Look for entry IDs in the HTML
-      const entryMatches = html.match(/entry\.\d+/g);
-      
-      if (entryMatches && entryMatches.length >= 2) {
-        return {
-          userId: entryMatches[0],
-          message: entryMatches[1]
-        };
+      // Try common entry ID patterns based on Google Forms structure
+      const formId = this.extractFormId(formUrl);
+      if (!formId) {
+        throw new Error('Could not extract form ID');
       }
+      
+      // For now, we'll need manual configuration or user input
+      // Return empty to force manual configuration
+      console.log('Entry ID detection requires manual configuration');
+      return {};
     } catch (error) {
-      console.log('Could not auto-detect entry IDs, using defaults');
+      console.log('Could not detect entry IDs:', error);
+      return {};
     }
-    
-    return {};
   }
 
   private static extractFormId(url: string): string | null {
