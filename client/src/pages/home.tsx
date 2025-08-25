@@ -115,18 +115,27 @@ export default function Home() {
     try {
       const result = await GoogleFormsManager.detectEntryIds(formUrl);
 
+      console.log('🔍 Detection result:', result);
+
       if (result.success) {
+        console.log('✅ Setting detected entries:', {
+          userId: result.userId,
+          message: result.message
+        });
+
         setDetectedEntries({
           userId: result.userId,
           message: result.message
         });
+
         showToast(
           result.error
             ? `検出完了（フォールバック）: ${result.error}`
-            : '✅ Entry ID検出完了！',
+            : `✅ Entry ID検出完了！ ID: ${result.userId}`,
           result.error ? 'error' : 'success'
         );
       } else {
+        console.log('❌ Detection failed:', result.error);
         showToast(`検出に失敗しました: ${result.error}`, 'error');
       }
     } catch (error) {

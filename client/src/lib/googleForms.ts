@@ -84,14 +84,23 @@ export class GoogleFormsManager {
         throw new Error('Could not extract form ID');
       }
 
-      // Convert to viewform URL to analyze structure
+      // Convert to viewform URL to analyze structure  
       const viewUrl = this.buildViewUrl(formUrl, formId);
-      console.log('Analyzing form structure from:', viewUrl);
+      console.log('🔗 Original form URL:', formUrl);
+      console.log('🔗 Extracted form ID:', formId);
+      console.log('🔗 Built view URL:', viewUrl);
+
+      // Verify URL construction is correct
+      if (!viewUrl.includes(formId)) {
+        throw new Error(`Form ID ${formId} not found in built URL: ${viewUrl}`);
+      }
 
       try {
         console.log('🔍 Trying CORS proxy method...');
-        // Method 2: Use CORS proxy as fallback
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`;
+        console.log('🌐 Proxy URL:', proxyUrl);
+        console.log('🌐 Target URL being proxied:', viewUrl);
+
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
