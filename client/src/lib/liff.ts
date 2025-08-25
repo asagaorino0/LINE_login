@@ -32,12 +32,16 @@ export class LiffManager {
         return true;
       }
 
+      // Wait for LIFF SDK to load if not available yet
+      await this.waitForLiff();
+
       if (!window.liff) {
-        throw new Error('LIFF SDK is not loaded. Please include the LIFF SDK script.');
+        throw new Error('LIFF SDK failed to load after waiting.');
       }
 
       await window.liff.init({ liffId });
       this.isInitialized = true;
+      console.log('LIFF initialized successfully');
       return true;
     } catch (error) {
       console.error('LIFF initialization failed:', error);
@@ -46,6 +50,35 @@ export class LiffManager {
       this.isInitialized = true;
       return true;
     }
+  }
+
+  private async waitForLiff(maxAttempts = 50): Promise<void> {
+    let attempts = 0;
+    while (!window.liff && attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    if (!window.liff) {
+      // Try to load LIFF SDK dynamically
+      await this.loadLiffSdk();
+    }
+  }
+
+  private async loadLiffSdk(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (window.liff) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.charset = 'utf-8';
+      script.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load LIFF SDK'));
+      document.head.appendChild(script);
+    });
   }
 
   async login(): Promise<LiffProfile> {
