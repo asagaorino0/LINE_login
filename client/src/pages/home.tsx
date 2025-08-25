@@ -591,7 +591,16 @@ export default function Home() {
                   </svg>
                 </div>
 
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">フォームにアクセス</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  <a
+                    href={prefillFormUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline"
+                  >
+                    フォームにアクセス
+                  </a>
+                </h3>
 
                 <p className="text-gray-600 text-sm mb-4 leading-relaxed">
                   下のボタンからフォームにアクセスしてください。<br />
