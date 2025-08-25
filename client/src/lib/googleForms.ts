@@ -19,21 +19,12 @@ export class GoogleFormsManager {
       // Create form data for submission
       const formData = new FormData();
 
-      // Try to get entry IDs from environment first, then try detection
-      let userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY;
-      let messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY;
-
-      // If no environment variables, try to detect from form or use test submission
-      if (!userIdEntryId || !messageEntryId) {
-        console.log('No environment entry IDs found, trying test submission method...');
-        console.log('Environment USERID:', import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY);
-        console.log('Environment MESSAGE:', import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY);
-        const detectedIds = await this.detectEntryIdsViaTest(data.formUrl);
-        userIdEntryId = userIdEntryId || detectedIds.userId || 'entry.1587760013';
-        messageEntryId = messageEntryId || detectedIds.message || 'entry.478817684';
-        console.log('Final userIdEntry:', userIdEntryId);
-        console.log('Final messageEntry:', messageEntryId);
-      }
+      // FORCE NEW ENTRY IDS - Override everything for new form
+      console.log('=== FORCING NEW ENTRY IDS ===');
+      let userIdEntryId = 'entry.1587760013';  // Force new form entry ID
+      let messageEntryId = 'entry.478817684';  // Force new form entry ID
+      console.log('FORCED userIdEntry:', userIdEntryId);
+      console.log('FORCED messageEntry:', messageEntryId);
 
       console.log('Submitting to Google Forms with:', {
         userIdEntry: userIdEntryId,
