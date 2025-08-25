@@ -160,7 +160,7 @@ export default function Home() {
     submitFormMutation.mutate();
   };
 
-  const handleShowEmbeddedForm = () => {
+  const handleOpenFormInNewTab = () => {
     if (!userProfile) {
       showToast('LINEログインが必要です', 'error');
       return;
@@ -173,8 +173,13 @@ export default function Home() {
 
     // Google Formsのプリフィル機能でUIDを事前設定
     const prefillUrl = generatePrefillUrl(formUrl, userProfile.userId);
-    setPrefillFormUrl(prefillUrl);
+
+    // 新しいタブでフォームを開く
+    window.open(prefillUrl, '_blank', 'noopener,noreferrer');
+
+    // フォームが開いたことを記録
     setShowEmbeddedForm(true);
+    showToast('フォームが新しいタブで開きました', 'success');
   };
 
   const generatePrefillUrl = (originalUrl: string, userId: string): string => {
@@ -424,20 +429,18 @@ export default function Home() {
 
             <div className="space-y-3">
               <Button
-                onClick={handleShowEmbeddedForm}
-                disabled={!isLoggedIn || !formUrl.trim() || showEmbeddedForm}
+                onClick={handleOpenFormInNewTab}
+                disabled={!isLoggedIn || !formUrl.trim()}
                 className={cn(
                   "w-full font-medium py-3 px-6 rounded-lg transition-all duration-200 min-h-[48px]",
-                  isLoggedIn && formUrl.trim() && !showEmbeddedForm
+                  isLoggedIn && formUrl.trim()
                     ? "bg-green-600 hover:bg-green-700 text-white"
                     : "bg-gray-300 text-gray-500 cursor-not-allowed"
                 )}
                 data-testid="button-show-form"
               >
-                {showEmbeddedForm ? (
-                  "フォーム表示中"
-                ) : isLoggedIn && formUrl.trim() ? (
-                  "フォームを開いて回答する"
+                {isLoggedIn && formUrl.trim() ? (
+                  "フォームを新しいタブで開く"
                 ) : (
                   "LINEログイン後に有効になります"
                 )}
@@ -470,63 +473,59 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Embedded Google Form */}
-        {showEmbeddedForm && prefillFormUrl && (
+        {/* Form Opened Confirmation */}
+        {showEmbeddedForm && (
           <Card className="mb-6">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Google フォーム</h3>
-                <Button
-                  onClick={() => setShowEmbeddedForm(false)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  閉じる
-                </Button>
-              </div>
-
-              <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                <div className="flex items-start space-x-2">
-                  <svg className="w-4 h-4 text-green-500 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L9 8l-9 9z" />
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
-                  <p className="text-xs text-green-700">
-                    あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）が自動的に設定されています。
-                    フォームに回答して「送信」ボタンを押してください。
-                  </p>
                 </div>
-              </div>
 
-              <div className="border rounded-lg overflow-hidden">
-                <iframe
-                  src={prefillFormUrl}
-                  width="100%"
-                  height="600"
-                  frameBorder="0"
-                  marginHeight={0}
-                  marginWidth={0}
-                  className="w-full"
-                  title="Google Form"
-                >
-                  読み込み中...
-                </iframe>
-              </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-sm text-gray-600 mb-2">
-                  フォーム内で「送信」ボタンを押すと回答が完了します
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">フォームが開きました</h3>
+                <p className="text-gray-600 text-sm mb-4 leading-relaxed">
+                  新しいタブでGoogle Formsが開きました。<br />
+                  あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）は自動的に設定されています。
                 </p>
-                <Button
-                  onClick={() => {
-                    setHasSubmitted(true);
-                    setSubmissionTime(new Date());
-                    showToast('フォーム回答が完了しました', 'success');
-                  }}
-                  className="bg-google-blue hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg"
-                >
-                  回答完了として記録
-                </Button>
+
+                <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                  <div className="flex items-start space-x-2">
+                    <svg className="w-5 h-5 text-blue-500 mt-0.5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                    </svg>
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-blue-900 mb-1">次のステップ：</p>
+                      <ol className="text-xs text-blue-700 space-y-1">
+                        <li>1. 新しいタブのフォームに回答</li>
+                        <li>2. フォーム内の「送信」ボタンをクリック</li>
+                        <li>3. 回答完了</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Button
+                    onClick={() => {
+                      setHasSubmitted(true);
+                      setSubmissionTime(new Date());
+                      showToast('フォーム回答が完了しました', 'success');
+                    }}
+                    className="w-full bg-google-blue hover:bg-blue-600 text-white font-medium py-3 px-6 rounded-lg"
+                  >
+                    回答完了として記録
+                  </Button>
+
+                  <Button
+                    onClick={() => setShowEmbeddedForm(false)}
+                    variant="ghost"
+                    className="w-full text-gray-500 hover:text-gray-700"
+                  >
+                    このメッセージを閉じる
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
