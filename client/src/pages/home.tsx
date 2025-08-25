@@ -139,34 +139,26 @@ export default function Home() {
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
-
     try {
       const result = await GoogleFormsManager.detectEntryIds(formUrl);
-
       console.log('🔍 Detection result:', result);
-
       if (result.success) {
         console.log('✅ Setting detected entries:', {
           userId: result.userId,
           message: result.message
         });
-
         const detectionResult = {
           userId: result.userId!,
           message: result.message,
           formUrl: formUrl
         };
-
         setDetectedEntries({
           userId: result.userId,
           message: result.message
         });
-
         // Save the detection result for immediate use
         setLastDetectionResult(detectionResult);
-
         console.log('💾 Saved detection result:', detectionResult);
-
         showToast(
           result.error
             ? `検出完了（フォールバック）: ${result.error}`
@@ -189,15 +181,12 @@ export default function Home() {
     try {
       // Google Formsのプリフィル用URLを生成
       let url = originalUrl;
-
       // Remove existing query parameters to ensure clean prefill
       const baseUrl = url.split('?')[0];
-
       // Use detected entry ID or fallback to default
       // Priority: Use the most recently detected entry ID for this specific form URL
       // let userIdEntry =  'entry.1795297917'; // Default fallback (most common)
       let userIdEntry = detectedEntries?.userId; // Default fallback (most common)
-
       // Check if we have a recent detection result for this form URL
       if (lastDetectionResult && lastDetectionResult.formUrl === originalUrl) {
         userIdEntry = lastDetectionResult.userId;
@@ -212,7 +201,6 @@ export default function Home() {
           if (detectionResult.success && detectionResult.userId) {
             userIdEntry = detectionResult.userId;
             console.log('🎯 Auto-detection successful:', detectionResult.userId);
-
             // Save the result for future use
             setLastDetectionResult({
               userId: detectionResult.userId,
@@ -230,7 +218,6 @@ export default function Home() {
           console.log('❌ Auto-detection error, using fallback:', error);
         }
       }
-
       console.log('🎯 Generating URL with entry ID:', {
         userIdEntry,
         detectedEntries,
@@ -239,10 +226,8 @@ export default function Home() {
         originalUrl,
         isMatchingUrl: lastDetectionResult?.formUrl === originalUrl
       });
-
       // Google Forms prefill format: baseUrl + ?usp=pp_url + &entry.ID=value
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
-
       // Add message entry if available (for future additional message features)
       if (detectedEntries?.message) {
         const finalUrl = `${prefillUrl}&${detectedEntries.message}=`;
@@ -254,7 +239,6 @@ export default function Home() {
         });
         return finalUrl;
       }
-
       console.log('Generated prefill URL with detected entries:', prefillUrl, {
         detectedEntries,
         userIdEntry,
@@ -274,7 +258,6 @@ export default function Home() {
       handleLineLogin();
     }
   };
-
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -318,13 +301,11 @@ export default function Home() {
                   alt="スマートフォンでLINEアプリを使用している様子"
                   className="w-32 h-24 object-cover rounded-lg mx-auto mb-4"
                 />
-
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
                 <p className="text-gray-600 mb-6 text-sm leading-relaxed">
                   LINEアカウントでログインして、<br />
                   ユーザーIDを安全に取得します
                 </p>
-
                 <Button
                   onClick={handleLineLogin}
                   disabled={loginMutation.isPending}
@@ -568,7 +549,6 @@ export default function Home() {
           </div>
         </div>
       </footer>
-
       {/* Toast Notification */}
       <ToastNotification
         message={toast.message}
