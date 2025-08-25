@@ -392,52 +392,25 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 text-success-green bg-green-50 rounded-lg p-3">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
-                </svg>
-                <span className="text-sm font-medium">ログイン成功</span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Auto Mode - Simple UI for end users */}
-        {isAutoMode && isLoggedIn && formUrl && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">アンケートに回答</h3>
-                <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-                  ログインが完了しました。<br />
-                  アンケートフォームが開きます。
-                </p>
-
-                {autoRedirect ? (
-                  <div className="bg-blue-50 rounded-lg p-4 mb-6">
-                    <div className="flex items-center justify-center space-x-2 mb-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                      <span className="text-sm text-blue-700">自動的にフォームを開いています...</span>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    onClick={handleOpenFormInNewTab}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-6 rounded-lg"
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-blue-800 mb-2">
+                  <a
+                    href={formUrl ? generatePrefillUrl(formUrl, userProfile.userId) : '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline"
                   >
-                    アンケートフォームを開く
-                  </Button>
-                )}
+                    フォームにアクセス
+                  </a>
+                </h4>
+                <p className="text-xs text-blue-700">
+                  {formUrl ? 'クリックしてフォームに回答してください' : 'フォームURL設定後に利用可能になります'}
+                </p>
               </div>
             </CardContent>
           </Card>
         )}
+
 
         {/* Management Mode - Full UI for administrators */}
         {!isAutoMode && (
