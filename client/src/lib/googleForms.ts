@@ -13,13 +13,22 @@ export class GoogleFormsManager {
         throw new Error('Invalid Google Form URL format');
       }
 
+      // Try to auto-detect entry IDs if not provided in environment
+      const entryIds = await this.detectEntryIds(data.formUrl);
+      
       // Create form data for submission
       const formData = new FormData();
       
-      // These entry IDs would need to be configured based on your specific Google Form
-      // You can find these by inspecting the form HTML or using Google Forms API
-      const userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY || 'entry.123456789';
-      const messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY || 'entry.987654321';
+      // Use detected or environment-configured entry IDs
+      const userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY || entryIds.userId || 'entry.1234567890';
+      const messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY || entryIds.message || 'entry.1234567891';
+      
+      console.log('Submitting to Google Forms with:', {
+        userIdEntry: userIdEntryId,
+        messageEntry: messageEntryId,
+        userId: data.userId,
+        message: data.additionalMessage
+      });
       
       formData.append(userIdEntryId, data.userId);
       if (data.additionalMessage) {
@@ -45,6 +54,28 @@ export class GoogleFormsManager {
       console.error('Google Forms submission failed:', error);
       throw new Error('フォーム送信に失敗しました。URLを確認してください。');
     }
+  }
+
+  private static async detectEntryIds(formUrl: string): Promise<{ userId?: string; message?: string }> {
+    try {
+      // Try to fetch the form page and extract entry IDs
+      const response = await fetch(formUrl, { mode: 'cors' });
+      const html = await response.text();
+      
+      // Look for entry IDs in the HTML
+      const entryMatches = html.match(/entry\.\d+/g);
+      
+      if (entryMatches && entryMatches.length >= 2) {
+        return {
+          userId: entryMatches[0],
+          message: entryMatches[1]
+        };
+      }
+    } catch (error) {
+      console.log('Could not auto-detect entry IDs, using defaults');
+    }
+    
+    return {};
   }
 
   private static extractFormId(url: string): string | null {
