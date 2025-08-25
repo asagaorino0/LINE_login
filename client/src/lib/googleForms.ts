@@ -20,8 +20,8 @@ export class GoogleFormsManager {
       const formData = new FormData();
       
       // Use detected or environment-configured entry IDs
-      const userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY || entryIds.userId || 'entry.1234567890';
-      const messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY || entryIds.message || 'entry.1234567891';
+      const userIdEntryId = import.meta.env.VITE_GOOGLE_FORM_USERID_ENTRY || entryIds.userId || 'entry.580225804';
+      const messageEntryId = import.meta.env.VITE_GOOGLE_FORM_MESSAGE_ENTRY || entryIds.message || 'entry.580225804';
       
       console.log('Submitting to Google Forms with:', {
         userIdEntry: userIdEntryId,
@@ -86,6 +86,13 @@ export class GoogleFormsManager {
         return shortFormMatch[1];
       }
 
+      // Handle /d/e/ format URLs (e.g., /d/e/1FAIpQL...)
+      const longFormWithEMatch = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
+      if (longFormWithEMatch) {
+        return longFormWithEMatch[1];
+      }
+
+      // Handle /d/ format URLs (e.g., /d/1FAIpQL...)
       const longFormMatch = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
       if (longFormMatch) {
         return longFormMatch[1];
