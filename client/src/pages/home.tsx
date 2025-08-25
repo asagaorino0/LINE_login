@@ -19,6 +19,8 @@ export default function Home() {
   const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
 
   const { toast, showToast, hideToast } = useToastNotification();
 
@@ -48,6 +50,25 @@ export default function Home() {
 
     initLiff();
   }, []);
+
+  // Generate URL when user is logged in and has form URL
+  useEffect(() => {
+    if (userProfile && formUrl && isAutoMode) {
+      setIsGeneratingUrl(true);
+      generatePrefillUrl(formUrl, userProfile.userId)
+        .then(url => {
+          setGeneratedUrl(url);
+          setIsGeneratingUrl(false);
+        })
+        .catch(error => {
+          console.error('URL generation failed:', error);
+          setIsGeneratingUrl(false);
+        });
+    } else {
+      setGeneratedUrl(null);
+      setIsGeneratingUrl(false);
+    }
+  }, [userProfile, formUrl, isAutoMode, lastDetectionResult, detectedEntries]);
 
   // URLパラメータからフォーム情報を読み取り
   useEffect(() => {
@@ -164,7 +185,7 @@ export default function Home() {
     }
   };
 
-  const generatePrefillUrl = (originalUrl: string, userId: string): string => {
+  const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
     try {
       // Google Formsのプリフィル用URLを生成
       let url = originalUrl;
@@ -174,15 +195,40 @@ export default function Home() {
 
       // Use detected entry ID or fallback to default
       // Priority: Use the most recently detected entry ID for this specific form URL
-      let userIdEntry = 'entry.1587760013'; // Default fallback
+      // let userIdEntry =  'entry.1795297917'; // Default fallback (most common)
+      let userIdEntry = detectedEntries?.userId; // Default fallback (most common)
 
       // Check if we have a recent detection result for this form URL
       if (lastDetectionResult && lastDetectionResult.formUrl === originalUrl) {
         userIdEntry = lastDetectionResult.userId;
-        console.log('🚀 Using fresh detection result:', lastDetectionResult);
+        console.log('🚀 Using fresh detection result:', lastDetectionResult, detectedEntries?.userId);
       } else if (detectedEntries?.userId) {
         userIdEntry = detectedEntries.userId;
         console.log('📋 Using stored state result:', detectedEntries);
+      } else {
+        console.log('⚠️ No detection result available, attempting automatic detection...');
+        try {
+          const detectionResult = await GoogleFormsManager.detectEntryIds(originalUrl);
+          if (detectionResult.success && detectionResult.userId) {
+            userIdEntry = detectionResult.userId;
+            console.log('🎯 Auto-detection successful:', detectionResult.userId);
+
+            // Save the result for future use
+            setLastDetectionResult({
+              userId: detectionResult.userId,
+              message: detectionResult.message,
+              formUrl: originalUrl
+            });
+            setDetectedEntries({
+              userId: detectionResult.userId,
+              message: detectionResult.message
+            });
+          } else {
+            console.log('❌ Auto-detection failed, using fallback');
+          }
+        } catch (error) {
+          console.log('❌ Auto-detection error, using fallback:', error);
+        }
       }
 
       console.log('🎯 Generating URL with entry ID:', {
@@ -312,14 +358,21 @@ export default function Home() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <h3 className="text-lg font-semibold mb-4">
-                  <a
-                    href={generatePrefillUrl(formUrl, userProfile.userId)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline"
-                  >
-                    フォームにアクセス
-                  </a>
+                  {isGeneratingUrl ? (
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                      <span>URLを生成中...</span>
+                    </div>
+                  ) : (
+                    <a
+                      href={generatedUrl || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline"
+                    >
+                      フォームにアクセス
+                    </a>
+                  )}
                 </h3>
               </div>
             </CardContent>
