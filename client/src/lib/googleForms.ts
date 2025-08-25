@@ -89,25 +89,42 @@ export class GoogleFormsManager {
       console.log('Analyzing form structure from:', viewUrl);
 
       try {
-        // Use a CORS proxy to fetch the form HTML
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(viewUrl)}`;
+        console.log('🔍 Trying CORS proxy method...');
+        // Method 2: Use CORS proxy as fallback
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`;
         const response = await fetch(proxyUrl);
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw new Error(`Proxy HTTP ${response.status}: ${response.statusText}`);
         }
 
-        const html = await response.text();
+        const data = await response.json();
+        const html = data.contents;
+        console.log('📄 Retrieved HTML length:', html?.length || 0);
 
-        // Extract entry IDs from the HTML
-        const entryMatches = html.match(/entry\.\d+/g);
-        if (!entryMatches || entryMatches.length === 0) {
-          throw new Error('No entry IDs found in form');
+        if (!html) {
+          throw new Error('No HTML content received from proxy');
         }
 
-        // Remove duplicates and take first two
-        const uniqueEntries = [...new Set(entryMatches)];
-        console.log('Found entry IDs:', uniqueEntries);
+        // Extract entry IDs with multiple patterns
+        const patterns = [
+          /name="entry\.(\d+)"/g,
+          /entry\.(\d+)/g,
+          /"entry\.(\d+)"/g
+        ];
+
+        let allEntries = [];
+        for (const pattern of patterns) {
+          const matches = [...html.matchAll(pattern)];
+          allEntries.push(...matches.map(m => `entry.${m[1]}`));
+        }
+
+        const uniqueEntries = [...new Set(allEntries)];
+        console.log('🎯 Found entry IDs with patterns:', uniqueEntries);
+
+        if (uniqueEntries.length === 0) {
+          throw new Error('No entry IDs found in HTML');
+        }
 
         return {
           userId: uniqueEntries[0] || undefined,
@@ -115,7 +132,7 @@ export class GoogleFormsManager {
           success: true
         };
       } catch (fetchError) {
-        console.log('Proxy fetch failed, trying backup method:', fetchError);
+        console.log('❌ All detection methods failed:', fetchError);
 
         // Fallback: Use common patterns for Google Forms
         const commonEntries = this.getCommonEntryPatterns();
