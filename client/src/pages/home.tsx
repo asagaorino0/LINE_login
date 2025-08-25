@@ -214,37 +214,12 @@ export default function Home() {
 
     // Google Formsのプリフィル機能でUIDを事前設定
     const prefillUrl = generatePrefillUrl(formUrl, userProfile.userId);
-    console.log('Opening form URL:', prefillUrl);
+    console.log('Generated prefill URL:', prefillUrl);
 
-    try {
-      // LIFFアプリの場合はLIFF.openWindow()を使用
-      if (typeof window !== 'undefined' && (window as any).liff) {
-        console.log('Using LIFF openWindow');
-        (window as any).liff.openWindow({
-          url: prefillUrl,
-          external: true
-        });
-      } else {
-        // 通常のブラウザの場合はwindow.openを使用
-        console.log('Using window.open');
-        const newWindow = window.open(prefillUrl, '_blank', 'noopener,noreferrer');
-        if (!newWindow) {
-          throw new Error('Popup blocked');
-        }
-      }
-
-      // フォームが開いたことを記録
-      setShowEmbeddedForm(true);
-      showToast('フォームが新しいタブで開きました', 'success');
-
-    } catch (error) {
-      console.error('Failed to open form:', error);
-
-      // フォールバック：URLを直接表示してユーザーに手動で開いてもらう
-      setShowEmbeddedForm(true);
-      setPrefillFormUrl(prefillUrl);
-      showToast('フォームのリンクを表示しました', 'info');
-    }
+    // 常にフォールバック画面を表示（自動で開くのは期待しない）
+    setShowEmbeddedForm(true);
+    setPrefillFormUrl(prefillUrl);
+    showToast('フォームリンクを準備しました', 'success');
   };
 
   const generatePrefillUrl = (originalUrl: string, userId: string): string => {
@@ -616,61 +591,60 @@ export default function Home() {
                   </svg>
                 </div>
 
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {prefillFormUrl ? 'フォームリンクが準備できました' : 'フォームが開きました'}
-                </h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">フォームにアクセス</h3>
 
-                {prefillFormUrl ? (
-                  <>
-                    <p className="text-gray-600 text-sm mb-4 leading-relaxed">
-                      フォームが自動で開かない場合は、下のボタンから手動でアクセスしてください。<br />
-                      あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）は自動的に設定されています。
-                    </p>
+                <p className="text-gray-600 text-sm mb-4 leading-relaxed">
+                  下のボタンからフォームにアクセスしてください。<br />
+                  あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）は自動的に設定されています。
+                </p>
 
-                    <div className="bg-blue-50 rounded-lg p-4 mb-6 border">
-                      <Button
-                        onClick={() => {
-                          // 再度開く試行
-                          try {
-                            if (typeof window !== 'undefined' && (window as any).liff) {
-                              (window as any).liff.openWindow({
-                                url: prefillFormUrl,
-                                external: true
-                              });
-                            } else {
-                              window.open(prefillFormUrl, '_blank', 'noopener,noreferrer');
-                            }
-                          } catch (error) {
-                            // 完全に失敗した場合はURLをコピー
-                            navigator.clipboard.writeText(prefillFormUrl);
-                            showToast('フォームURLをコピーしました。ブラウザで貼り付けてアクセスしてください', 'info');
+                <div className="bg-blue-50 rounded-lg p-4 mb-6 border">
+                  <Button
+                    onClick={() => {
+                      // 複数の方法でフォームを開く試行
+                      try {
+                        if (typeof window !== 'undefined' && (window as any).liff) {
+                          console.log('Trying LIFF openWindow');
+                          (window as any).liff.openWindow({
+                            url: prefillFormUrl,
+                            external: true
+                          });
+                        } else {
+                          console.log('Trying window.open');
+                          const newWindow = window.open(prefillFormUrl, '_blank', 'noopener,noreferrer');
+                          if (!newWindow) {
+                            throw new Error('Popup blocked');
                           }
-                        }}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg mb-3"
-                      >
-                        🔗 フォームを開く
-                      </Button>
+                        }
+                      } catch (error) {
+                        console.error('Failed to open form:', error);
+                        // フォールバック：URLをコピー
+                        navigator.clipboard.writeText(prefillFormUrl);
+                        showToast('フォームURLをコピーしました。新しいタブで貼り付けてアクセスしてください', 'info');
+                      }
+                    }}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg mb-3"
+                  >
+                    🔗 フォームを開く
+                  </Button>
 
-                      <p className="text-xs text-blue-700 mb-2">上のボタンが動作しない場合:</p>
-                      <Button
-                        onClick={() => {
-                          navigator.clipboard.writeText(prefillFormUrl);
-                          showToast('フォームURLをコピーしました', 'success');
-                        }}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-blue-700 border-blue-300 hover:bg-blue-100"
-                      >
-                        📋 URLをコピーして手動でアクセス
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-gray-600 text-sm mb-4 leading-relaxed">
-                    新しいタブでGoogle Formsが開きました。<br />
-                    あなたのLINE ID（{userProfile?.userId.slice(0, 12)}...）は自動的に設定されています。
-                  </p>
-                )}
+                  <p className="text-xs text-blue-700 mb-2">うまく開かない場合は：</p>
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(prefillFormUrl);
+                      showToast('フォームURLをクリップボードにコピーしました', 'success');
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-blue-700 border-blue-300 hover:bg-blue-100"
+                  >
+                    📋 URLをコピーして手動でアクセス
+                  </Button>
+
+                  <div className="mt-3 p-2 bg-gray-100 rounded text-xs text-gray-600">
+                    <p className="font-mono break-all">{prefillFormUrl}</p>
+                  </div>
+                </div>
 
                 <div className="bg-blue-50 rounded-lg p-4 mb-6">
                   <div className="flex items-start space-x-2">
