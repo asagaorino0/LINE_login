@@ -51,17 +51,30 @@ export class GoogleFormsManager {
 
   private static extractFormId(url: string): string | null {
     try {
+      console.log('🔧 Extracting form ID from URL:', url);
+
       // Handle both short (forms.gle) and long Google Forms URLs
       const shortFormMatch = url.match(/forms\.gle\/([a-zA-Z0-9_-]+)/);
       if (shortFormMatch) {
+        console.log('✅ Short form match found:', shortFormMatch[1]);
         return shortFormMatch[1];
       }
 
+      // Handle /d/e/ format URLs (e.g., /d/e/1FAIpQL...)
+      const longFormWithEMatch = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
+      if (longFormWithEMatch) {
+        console.log('✅ Long form with /e/ match found:', longFormWithEMatch[1]);
+        return longFormWithEMatch[1];
+      }
+
+      // Handle /d/ format URLs (e.g., /d/1FAIpQL...)
       const longFormMatch = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
       if (longFormMatch) {
+        console.log('✅ Long form match found:', longFormMatch[1]);
         return longFormMatch[1];
       }
 
+      console.log('❌ No form ID pattern matched');
       return null;
     } catch (error) {
       console.error('Failed to extract form ID:', error);
