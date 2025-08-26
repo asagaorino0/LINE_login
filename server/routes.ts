@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertLineUserSchema, insertFormSubmissionSchema } from "../shared/schema.js";
 import { z } from "zod";
+import { sendLineMessage } from "./line.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // LINE user management routes
@@ -72,6 +73,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(submissions);
     } catch (error) {
       res.status(500).json({ message: "Failed to retrieve form submissions" });
+    }
+  });
+
+  // LINE message sending route
+  app.post("/api/line/send-message", async (req, res) => {
+    try {
+      const { userId, message } = req.body;
+      
+      if (!userId || !message) {
+        return res.status(400).json({ message: "userId and message are required" });
+      }
+      
+      console.log('📨 Attempting to send LINE message:', { userId, message });
+      const success = await sendLineMessage({ userId, message });
+      
+      if (success) {
+        res.json({ success: true, message: "Message sent successfully" });
+      } else {
+        res.status(500).json({ success: false, message: "Failed to send message" });
+      }
+    } catch (error) {
+      console.error('❌ LINE message send error:', error);
+      res.status(500).json({ success: false, message: "Internal server error" });
     }
   });
 

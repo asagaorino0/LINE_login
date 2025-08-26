@@ -22,6 +22,7 @@ export default function Home() {
   const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   const { toast, showToast, hideToast } = useToastNotification();
 
@@ -259,6 +260,37 @@ export default function Home() {
       handleLineLogin();
     }
   };
+
+  // Function to send LINE message when accessing form
+  const sendLineMessageAndOpenForm = async () => {
+    if (!userProfile || !generatedUrl) return;
+
+    setIsSendingMessage(true);
+
+    try {
+      console.log('📨 Sending LINE message to user:', userProfile.userId);
+
+      // Send message via API
+      const response = await apiRequest('POST', '/api/line/send-message', {
+        userId: userProfile.userId,
+        message: 'テスト'
+      });
+
+      console.log('✅ Message sent successfully:', response);
+
+      // Open form after message is sent
+      window.open(generatedUrl, '_blank');
+
+      // Show success message
+      showToast('メッセージを送信してフォームを開きました', 'success');
+
+    } catch (error) {
+      console.error('❌ Failed to send LINE message:', error);
+      showToast('メッセージ送信に失敗しました', 'error');
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -344,22 +376,30 @@ export default function Home() {
               </CardContent>
             </Card>
           ) : (
-            <a
-              href={generatedUrl || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-800 underline"
+            <Button
+              onClick={sendLineMessageAndOpenForm}
+              disabled={isSendingMessage || !generatedUrl}
+              className="w-full p-0 h-auto"
+              style={{ backgroundColor: "#1e9df1" }}
+              data-testid="button-access-form"
             >
-              <Card className="mb-6" style={{ backgroundColor: "#1e9df1" }}>
+              <Card className="mb-6 w-full border-0" style={{ backgroundColor: "#1e9df1" }}>
                 <CardContent className="pt-6">
                   <div className="text-center text-white">
-                    <h3 className="text-lg font-semibold">
-                      フォームにアクセス
-                    </h3>
+                    {isSendingMessage ? (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>メッセージ送信中...</span>
+                      </div>
+                    ) : (
+                      <h3 className="text-lg font-semibold">
+                        フォームにアクセス
+                      </h3>
+                    )}
                   </div>
                 </CardContent>
               </Card>
-            </a>
+            </Button>
           )
         )}
 
