@@ -10,7 +10,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/line-users", async (req, res) => {
     try {
       const validatedData = insertLineUserSchema.parse(req.body);
-      
+
       // Check if user already exists
       const existingUser = await storage.getLineUser(validatedData.lineUserId);
       if (existingUser) {
@@ -18,7 +18,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updatedUser = await storage.updateLineUser(validatedData.lineUserId, validatedData);
         return res.json(updatedUser);
       }
-      
+
       // Create new user
       const newUser = await storage.createLineUser(validatedData);
       res.status(201).json(newUser);
@@ -34,11 +34,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { lineUserId } = req.params;
       const user = await storage.getLineUser(lineUserId);
-      
+
       if (!user) {
         return res.status(404).json({ message: "LINE user not found" });
       }
-      
+
       res.json(user);
     } catch (error) {
       res.status(500).json({ message: "Failed to retrieve LINE user" });
@@ -49,13 +49,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/form-submissions", async (req, res) => {
     try {
       const validatedData = insertFormSubmissionSchema.parse(req.body);
-      
+
       // Verify LINE user exists
       const lineUser = await storage.getLineUser(validatedData.lineUserId);
       if (!lineUser) {
         return res.status(404).json({ message: "LINE user not found" });
       }
-      
+
       const submission = await storage.createFormSubmission(validatedData);
       res.status(201).json(submission);
     } catch (error) {
@@ -80,14 +80,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/line/send-message", async (req, res) => {
     try {
       const { userId, message } = req.body;
-      
+
       if (!userId || !message) {
         return res.status(400).json({ message: "userId and message are required" });
       }
-      
+
       console.log('📨 Attempting to send LINE message:', { userId, message });
       const success = await sendLineMessage({ userId, message });
-      
+
       if (success) {
         res.json({ success: true, message: "Message sent successfully" });
       } else {
