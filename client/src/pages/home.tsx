@@ -22,7 +22,6 @@ export default function Home() {
   const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
-  const [formSubmissionCompleted, setFormSubmissionCompleted] = useState(false);
 
   const { toast, showToast, hideToast } = useToastNotification();
 
@@ -82,7 +81,6 @@ export default function Home() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const formParam = urlParams.get('form');
-    const submittedParam = urlParams.get('submitted');
 
     if (formParam) {
       try {
@@ -93,12 +91,6 @@ export default function Home() {
       } catch (error) {
         console.error('Failed to parse URL parameters:', error);
       }
-    }
-
-    // Check if form submission is completed
-    if (submittedParam === 'true') {
-      setFormSubmissionCompleted(true);
-      console.log('Form submission completed detected');
     }
   }, []);
 
@@ -237,31 +229,24 @@ export default function Home() {
       });
       // Google Forms prefill format: baseUrl + ?usp=pp_url + &entry.ID=value
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
-
-      // Add redirect URL for form completion callback
-      const redirectUrl = `${window.location.origin}${window.location.pathname}?form=${encodeURIComponent(originalUrl)}&submitted=true`;
-      const finalUrl = `${prefillUrl}&submit=Submit&continue=${encodeURIComponent(redirectUrl)}`;
-
       // Add message entry if available (for future additional message features)
       if (detectedEntries?.message) {
-        const urlWithMessage = `${prefillUrl}&${detectedEntries.message}=&submit=Submit&continue=${encodeURIComponent(redirectUrl)}`;
-        console.log('Generated prefill URL with detected entries and redirect:', urlWithMessage, {
+        const finalUrl = `${prefillUrl}&${detectedEntries.message}=`;
+        console.log('Generated prefill URL with detected entries:', finalUrl, {
           detectedEntries,
           userIdEntry,
           baseUrl,
-          originalUrl,
-          redirectUrl
+          originalUrl
         });
-        return urlWithMessage;
+        return finalUrl;
       }
-      console.log('Generated prefill URL with detected entries and redirect:', finalUrl, {
+      console.log('Generated prefill URL with detected entries:', prefillUrl, {
         detectedEntries,
         userIdEntry,
         baseUrl,
-        originalUrl,
-        redirectUrl
+        originalUrl
       });
-      return finalUrl;
+      return prefillUrl;
     } catch (error) {
       console.error('Failed to generate prefill URL:', error);
       return originalUrl;
@@ -273,17 +258,6 @@ export default function Home() {
     if (!isLoggedIn) {
       handleLineLogin();
     }
-  };
-
-  // Send message to official LINE account
-  const handleSendToOfficialLine = () => {
-    // Use the correct LINE URL format for opening official account chat
-    const lineUrl = `https://line.me/R/ti/p/@509xpbtq`;
-
-    // Open LINE app or web version
-    window.open(lineUrl, '_blank');
-
-    showToast('公式LINEが開きました', 'success');
   };
   if (!isInitialized) {
     return (
@@ -354,43 +328,8 @@ export default function Home() {
         )}
 
 
-        {/* Form Submission Completed - Send to Official LINE */}
-        {formSubmissionCompleted && isLoggedIn && userProfile && (
-          <Card className="mb-6" style={{ backgroundColor: "#06C755" }}>
-            <CardContent className="pt-6">
-              <div className="text-center text-white">
-                <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold mb-2">
-                  フォーム送信完了！
-                </h3>
-                <p className="text-sm mb-4 opacity-90">
-                  公式LINEに完了報告を送信できます
-                </p>
-                <Button
-                  onClick={handleSendToOfficialLine}
-                  className="bg-white text-line-green hover:bg-gray-100 font-medium py-2 px-6 rounded-lg transition-colors duration-200"
-                  data-testid="button-send-official-line"
-                >
-                  <div className="flex items-center justify-center space-x-2">
-                    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current">
-                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.2 0-.395-.078-.534-.22a.631.631 0 01-.028-.028l-2.51-2.681v2.262c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.27.173-.51.43-.595.06-.02.124-.029.188-.029.2 0 .395.078.534.22a.631.631 0 01.028.028l2.51 2.681V8.108c0-.345.282-.63.631-.63.345 0 .627.285.627.63v4.771z" />
-                      <path d="M9.5 8.738c0-.345-.282-.63-.631-.63-.345 0-.627.285-.627.63v4.771c0 .345.282.63.627.63.349 0 .631-.285.631-.63V8.738z" />
-                      <path d="M6.419 13.509c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.345.282-.63.627-.63h1.888c.832 0 1.509.677 1.509 1.509v.63c0 .832-.677 1.508-1.509 1.508H6.419v2.384zm.631-3.645h1.257c.173 0 .315-.141.315-.315v-.63c0-.174-.142-.315-.315-.315H7.05v1.26z" />
-                    </svg>
-                    <span>公式LINEに連絡</span>
-                  </div>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Simple Form Access Link - shown after authentication in auto mode only */}
-        {isLoggedIn && userProfile && formUrl && isAutoMode && !formSubmissionCompleted && (
+        {isLoggedIn && userProfile && formUrl && isAutoMode && (
           isGeneratingUrl ? (
             <Card className="mb-6" >
               <CardContent className="pt-6">
@@ -423,6 +362,26 @@ export default function Home() {
             </a>
           )
         )}
+
+        {/* Logged in but no form URL - show simple message */}
+        {/* {isLoggedIn && userProfile && !formUrl && !isAdmin && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">ログイン完了</h3>
+                <p className="text-gray-600 text-sm">
+                  フォームURLがパラメータに含まれていません。<br />
+                  正しいリンクからアクセスしてください。
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )} */}
 
         {/* Error State - shown when login fails */}
         {error && (
@@ -541,23 +500,10 @@ export default function Home() {
                         }}
                         variant={detectedEntries ? "default" : "outline"}
                         size="sm"
-                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2 mb-2"
+                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2"
                       >
                         <Copy className="w-3 h-3 mr-1" />
                         リンクをコピー
-                      </Button>
-
-                      {/* Test button for form submission completion */}
-                      <Button
-                        onClick={() => {
-                          setFormSubmissionCompleted(true);
-                          showToast('テスト: フォーム送信完了状態に設定', 'success');
-                        }}
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-blue-700 border-blue-300 hover:bg-blue-50"
-                      >
-                        🧪 送信完了テスト
                       </Button>
                     </div>
                   </div>
@@ -579,7 +525,7 @@ export default function Home() {
                     </div>
                     <p className="text-xs text-amber-700 mb-2">
                       UID欄が空白になる問題を防ぐため、<br />
-                      <strong>以下の設定を推奨します：</strong>
+                      <strong>以下の設定を推奨します</strong>
                     </p>
                     <div className="bg-white rounded border p-2 mb-2">
                       <p className="text-xs text-gray-600">
