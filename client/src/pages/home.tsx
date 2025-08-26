@@ -278,11 +278,16 @@ export default function Home() {
 
       console.log('✅ Message sent successfully:', response);
 
-      // Open form after message is sent
-      window.open(generatedUrl, '_blank');
+      // スマホ対応: window.openの代わりにlocation.hrefを使用
+      if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        // スマホの場合は現在のタブでフォームを開く
+        window.location.href = generatedUrl;
+      } else {
+        // PCの場合は新しいタブで開く
+        window.open(generatedUrl, '_blank');
+      }
 
-      // Show success message
-      showToast('メッセージを送信してフォームを開きました', 'success');
+      // アラート削除 - 成功メッセージは表示しない
 
     } catch (error) {
       console.error('❌ Failed to send LINE message:', error);
