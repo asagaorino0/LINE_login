@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
-import { RefreshCw, Github, Shield, HelpCircle, Copy, ExternalLink } from "lucide-react";
+import { RefreshCw, Github, Shield, HelpCircle, Copy } from "lucide-react";
 import { liffManager, type LiffProfile } from "../lib/liff";
 import { apiRequest } from "../lib/queryClient";
 import { ToastNotification, useToastNotification } from "../components/ui/toast-notification";
@@ -14,6 +14,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
   const [formUrl, setFormUrl] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
@@ -68,7 +69,13 @@ export default function Home() {
       setGeneratedUrl(null);
       setIsGeneratingUrl(false);
     }
-  }, [userProfile, formUrl, isAutoMode, lastDetectionResult, detectedEntries]);
+  }, [
+    userProfile,
+    // formUrl,
+    isAutoMode,
+    lastDetectionResult,
+    detectedEntries
+  ]);
 
   // URLパラメータからフォーム情報を読み取り
   useEffect(() => {
@@ -110,7 +117,7 @@ export default function Home() {
       setUserProfile(profile);
       setIsLoggedIn(true);
       setError(null);
-      showToast('ログインしました', 'success');
+      // showToast('ログインしました', 'success');
     },
     onError: (error: Error) => {
       console.error('Login failed:', error);
@@ -159,12 +166,6 @@ export default function Home() {
         // Save the detection result for immediate use
         setLastDetectionResult(detectionResult);
         console.log('💾 Saved detection result:', detectionResult);
-        showToast(
-          result.error
-            ? `検出完了（フォールバック）: ${result.error}`
-            : `✅ Entry ID検出完了！ ID: ${result.userId}`,
-          result.error ? 'error' : 'success'
-        );
       } else {
         console.log('❌ Detection failed:', result.error);
         showToast(`検出に失敗しました: ${result.error}`, 'error');
@@ -276,14 +277,7 @@ export default function Home() {
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-line-green rounded-lg flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
-                  <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.2 0-.395-.078-.534-.22a.631.631 0 01-.028-.028l-2.51-2.681v2.262c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.27.173-.51.43-.595.06-.02.124-.029.188-.029.2 0 .395.078.534.22a.631.631 0 01.028.028l2.51 2.681V8.108c0-.345.282-.63.631-.63.345 0 .627.285.627.63v4.771z" />
-                  <path d="M9.5 8.738c0-.345-.282-.63-.631-.63-.345 0-.627.285-.627.63v4.771c0 .345.282.63.627.63.349 0 .631-.285.631-.63V8.738z" />
-                  <path d="M6.419 13.509c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.345.282-.63.627-.63h1.888c.832 0 1.509.677 1.509 1.509v.63c0 .832-.677 1.508-1.509 1.508H6.419v2.384zm.631-3.645h1.257c.173 0 .315-.141.315-.315v-.63c0-.174-.142-.315-.315-.315H7.05v1.26z" />
-                </svg>
-              </div>
-              <h1 className="text-lg font-semibold text-gray-900">UID取得システム</h1>
+              <h1 className="text-lg font-semibold text-gray-900">Googleフォーム-LINE連携システム</h1>
             </div>
             <div className="text-sm text-gray-500">v1.0</div>
           </div>
@@ -335,29 +329,37 @@ export default function Home() {
 
         {/* Simple Form Access Link - shown after authentication */}
         {isLoggedIn && userProfile && formUrl && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <h3 className="text-lg font-semibold mb-4">
-                  {isGeneratingUrl ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          isGeneratingUrl ? (
+            <Card className="mb-6" >
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <h3 className="text-base font-semibold">
+                    <div className="flex items-center justify-center space-x-2 text-blue-600">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-800 border-t-transparent rounded-full"></div>
                       <span>URLを生成中...</span>
                     </div>
-                  ) : (
-                    <a
-                      href={generatedUrl || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 underline"
-                    >
+                  </h3>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <a
+              href={generatedUrl || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 underline"
+            >
+              <Card className="mb-6" style={{ backgroundColor: "#1e9df1" }}>
+                <CardContent className="pt-6">
+                  <div className="text-center text-white">
+                    <h3 className="text-lg font-semibold">
                       フォームにアクセス
-                    </a>
-                  )}
-                </h3>
-              </div>
-            </CardContent>
-          </Card>
+                    </h3>
+                  </div>
+                </CardContent>
+              </Card>
+            </a>
+          )
         )}
 
         {/* Logged in but no form URL - show simple message */}
@@ -406,128 +408,166 @@ export default function Home() {
 
         {/* Simple Admin Mode - Only when not auto mode */}
         {!isAutoMode && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
-                <p className="text-gray-600 text-sm">Google Formsのリンクを生成します</p>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Google Forms URL
-                  </label>
-                  <div className="relative">
-                    <Input
-                      type="url"
-                      value={formUrl}
-                      onChange={(e) => {
-                        setFormUrl(e.target.value);
-                        // Reset detected entries when URL changes
-                        if (detectedEntries) setDetectedEntries(null);
-                        if (lastDetectionResult) setLastDetectionResult(null);
-                      }}
-                      placeholder="https://docs.google.com/forms/d/..."
-                      className="pr-8"
-                    />
-                    <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  </div>
-
-                  {/* Auto-detect button */}
-                  {formUrl.trim() && (
-                    <Button
-                      onClick={handleDetectEntries}
-                      disabled={isDetecting}
-                      variant="outline"
-                      size="sm"
-                      className="mt-2 w-full text-blue-700 border-blue-300 hover:bg-blue-50"
-                    >
-                      {isDetecting ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
-                          <span>Entry ID検出中...</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-1">
-                          <span>🔍</span>
-                          <span>Entry ID自動検出</span>
-                        </div>
-                      )}
-                    </Button>
-                  )}
-
-                  {/* Detection results */}
-                  {detectedEntries && (
-                    <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                      <h5 className="text-xs font-semibold text-blue-800 mb-2">✅ 検出されたEntry ID</h5>
-                      <div className="space-y-1 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">UID用:</span>
-                          <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.userId || 'なし'}</code>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">メッセージ用:</span>
-                          <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.message || 'なし'}</code>
-                        </div>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-2">
-                        🎯 このフォームでUID自動入力が設定されました
-                      </p>
-                    </div>
-                  )}
+          <>
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
+                  {/* <p className="text-gray-600 text-sm">GoogleフォームとLINEの連携リンクを生成</p> */}
                 </div>
+                {isAdmin ? (
+                  <div className="space-y-4">
+                    <div>
+                      {/* <label className="block text-sm font-medium text-gray-700 mb-2">
+            Googleフォーム URL
+          </label> */}
+                      <div className="relative">
+                        <Input
+                          type="url"
+                          value={formUrl}
 
-                {formUrl.trim() && (
-                  <div className="space-y-3">
-                    {detectedEntries && (
+                          onChange={(e) => {
+                            setFormUrl(e.target.value);
+                            // Reset detected entries when URL changes
+                            if (detectedEntries) setDetectedEntries(null);
+                            if (lastDetectionResult) setLastDetectionResult(null);
+                          }}
+                          placeholder="GoogleフォームのURLを入力"
+                          className="pr-5 text-gray-600 text-sm" />
+                      </div>
+                      <Button
+                        onClick={handleDetectEntries}
+                        disabled={isDetecting}
+                        variant={formUrl ? "default" : "outline"}
+                        size="sm"
+                        className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
+                      >
+                        {isDetecting ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
+                            <span>連携リンク生成中...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-1">
+                            <span>✨</span>
+                            <span>連携リンクを生成</span>
+                          </div>
+                        )}
+                      </Button>
+                      {/* {detectedEntries && (
+            <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <h5 className="text-xs font-semibold text-blue-800 mb-2">✅ 検出されたEntry ID</h5>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-blue-700">UID用:</span>
+                  <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.userId || 'なし'}</code>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-blue-700">メッセージ用:</span>
+                  <code className="bg-white px-1 rounded text-blue-900">{detectedEntries.message || 'なし'}</code>
+                </div>
+              </div>
+              <p className="text-xs text-blue-600 mt-2">
+                🎯 このフォームでUID自動入力が設定されました
+              </p>
+            </div>
+          )} */}
+                    </div>
+
+                    <div className="space-y-3">
                       <div className="p-4 bg-green-50 rounded-lg border">
-                        <h4 className="text-sm font-semibold text-green-800 mb-2">📋 利用者向けリンク</h4>
+                        {detectedEntries &&
+                          <h4 className="text-sm font-semibold text-green-800 mb-2">連携リンクを再生しました。以下のリンクを</h4>}
+                        <h4 className="text-sm font-semibold text-green-800 mb-2">GoogleフォームURLとしてご利用ください。</h4>
                         <p className="text-xs text-green-700 mb-3">
-                          このリンクを共有すると、ワンクリックでログイン→フォーム回答が可能です
+                          フォームのデータが公式LINEで利用可能になります
                         </p>
                         <div className="bg-white rounded border p-3 mb-3">
                           <code className="text-xs font-mono text-gray-800 break-all">
-                            {`${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`}
+                            {isDetecting ? <div className="flex justify-center">
+                              <div className="animate-spin rounded-full h-5 w-5 border-b border-primary"></div>
+                            </div> :
+                              detectedEntries ? `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true` : <div className="flex justify-center"> ・・・</div>}
                           </code>
                         </div>
-                        <Button
-                          onClick={() => {
-                            const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                            navigator.clipboard.writeText(userLink);
-                            showToast('利用者向けリンクをコピーしました', 'success');
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-green-700 border-green-300 hover:bg-green-100"
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          リンクをコピー
-                        </Button>
                       </div>
-                    )}
-
-                    {/* Important Note about "Submit another response" */}
-                    <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                      <h5 className="text-xs font-semibold text-amber-800 mb-1">⚠️ 重要な設定</h5>
-                      <p className="text-xs text-amber-700 mb-2">
-                        「別の回答を送信」でUID欄が空白になる問題を防ぐため、<br />
-                        <strong>Googleフォーム側で以下の設定を推奨します：</strong>
-                      </p>
-                      <div className="bg-white rounded border p-2 mb-2">
-                        <p className="text-xs text-gray-600">
-                          📝 <strong>設定手順：</strong><br />
-                          1. Googleフォーム編集画面 → ⚙️「設定」<br />
-                          2. 「回答」タブ → 「回答を1回に制限する」をオン<br />
-                          3. これで「別の回答を送信」が無効化されます
-                        </p>
-                      </div>
+                      <Button
+                        onClick={() => {
+                          const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                          navigator.clipboard.writeText(userLink);
+                          showToast('リンクをコピーしました', 'success');
+                        }}
+                        variant={detectedEntries ? "default" : "outline"}
+                        size="sm"
+                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2"
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        リンクをコピー
+                      </Button>
                     </div>
                   </div>
+                ) : (
+                  <><div className="p-3 bg-amber-50 rounded-lg mb-4">
+                    <h5 className="text-xs font-semibold text-amber-800 mb-1">Googleフォーム側の重要な設定</h5>
+                    <p className="text-xs text-amber-700 mb-2">
+                      ⚠️LINEと連携するため、
+                      <strong style={{ color: "red" }}>必ず次の設定をしてください</strong>
+                    </p>
+                    <div className="bg-white rounded border p-2 mb-2">
+                      <p className="text-xs text-gray-600">
+                        📝 <strong>設定手順：</strong><br />
+                        1. 質問１のタイトル: 「LINE User ID」<br />
+                        2. 質問１の回答形式: 記述式（短文）<br />
+                        3. 質問１の必須: ON<br />
+                        （メールアドレスの設定はあってもなくてもok）
+                      </p>
+                    </div>
+                    <p className="text-xs text-amber-700 mb-2">
+                      UID欄が空白になる問題を防ぐため、<br />
+                      <strong>以下の設定を推奨します：</strong>
+                    </p>
+                    <div className="bg-white rounded border p-2 mb-2">
+                      <p className="text-xs text-gray-600">
+                        📝 <strong>設定手順：</strong><br />
+                        1. Googleフォーム編集画面 → 「設定」タブ<br />
+                        2. 「回答」 → 「回答を1回に制限する」をオン<br />
+                        3. これで「別の回答を送信」が無効化されます
+                      </p>
+                    </div>
+                  </div>
+                    <Button
+                      onClick={() => {
+                        setIsAdmin(true);
+                      }}
+                      variant="default"
+                      size="sm"
+                      className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2 text-white"
+                    >
+                      はじめる
+                    </Button>
+                  </>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+            <div className="flex flex-row justify-center m-4">
+              <button
+                onClick={() => {
+                  setIsAdmin(false)
+                }}
+                className="px-2"
+              >
+                {isAdmin ? <div className="rounded-full h-3 w-3 bg-primary"></div> : <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white"></div>}
+              </button>
+              <button
+                onClick={() => {
+                  setIsAdmin(true)
+                }}
+                className="px-2"
+              >
+                {!isAdmin ? <div className="rounded-full h-3 w-3 bg-primary"></div> : <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white"></div>}
+              </button>
+            </div>
+          </>
         )}
       </main>
 
