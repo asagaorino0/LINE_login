@@ -327,8 +327,9 @@ export default function Home() {
           </Card>
         )}
 
-        {/* Simple Form Access Link - shown after authentication */}
-        {isLoggedIn && userProfile && formUrl && (
+
+        {/* Simple Form Access Link - shown after authentication in auto mode only */}
+        {isLoggedIn && userProfile && formUrl && isAutoMode && (
           isGeneratingUrl ? (
             <Card className="mb-6" >
               <CardContent className="pt-6">
@@ -363,7 +364,7 @@ export default function Home() {
         )}
 
         {/* Logged in but no form URL - show simple message */}
-        {isLoggedIn && userProfile && !formUrl && (
+        {/* {isLoggedIn && userProfile && !formUrl && !isAdmin && (
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="text-center">
@@ -380,7 +381,7 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
-        )}
+        )} */}
 
         {/* Error State - shown when login fails */}
         {error && (
