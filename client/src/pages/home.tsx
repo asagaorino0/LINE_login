@@ -277,14 +277,13 @@ export default function Home() {
 
   // Send message to official LINE account
   const handleSendToOfficialLine = () => {
-    const officialLineId = '@509xpbtq';
-    const message = encodeURIComponent('フォーム送信完了しました');
-    const lineUrl = `https://line.me/R/oaMessage/${officialLineId}/?${message}`;
+    // Use the correct LINE URL format for opening official account chat
+    const lineUrl = `https://line.me/R/ti/p/@509xpbtq`;
 
     // Open LINE app or web version
     window.open(lineUrl, '_blank');
 
-    showToast('公式LINEアプリを開きました', 'success');
+    showToast('公式LINEが開きました', 'success');
   };
   if (!isInitialized) {
     return (
