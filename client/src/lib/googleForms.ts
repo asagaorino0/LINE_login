@@ -8,8 +8,11 @@ export class GoogleFormsManager {
   static async submitToForm(data: GoogleFormsSubmission, entryIds?: { userId: string; message?: string }): Promise<{ success: boolean; timestamp: Date }> {
     try {
       // Parse the Google Form URL to extract form ID and create submission URL
+      console.log('Processing form URL:', data.formUrl);
       const formId = this.extractFormId(data.formUrl);
+      console.log('Extracted form ID:', formId);
       if (!formId) {
+        console.error('Failed to extract form ID from URL:', data.formUrl);
         throw new Error('Invalid Google Form URL format');
       }
 
@@ -23,13 +26,20 @@ export class GoogleFormsManager {
 
       console.log('Using detected entry IDs:', entryIds);
 
+      // Log form data being submitted  
+      console.log('Form submission data:', {
+        formUrl: data.formUrl,
+        userId: data.userId,
+        message: data.additionalMessage
+      });
+
       formData.append(entryIds.userId, data.userId);
       if (data.additionalMessage && entryIds.message) {
         formData.append(entryIds.message, data.additionalMessage);
       }
 
-      // Submit to Google Forms
-      const submitUrl = `https://docs.google.com/forms/d/${formId}/formResponse`;
+      // Submit to Google Forms - preserve URL structure (/d/e/ vs /d/)
+      const submitUrl = this.buildSubmitUrl(data.formUrl, formId);
 
       const response = await fetch(submitUrl, {
         method: 'POST',
@@ -47,44 +57,6 @@ export class GoogleFormsManager {
       console.error('Google Forms submission failed:', error);
       throw new Error('フォーム送信に失敗しました。URLを確認してください。');
     }
-  }
-
-  private static extractFormId(url: string): string | null {
-    try {
-      console.log('🔧 Extracting form ID from URL:', url);
-
-      // Handle both short (forms.gle) and long Google Forms URLs
-      const shortFormMatch = url.match(/forms\.gle\/([a-zA-Z0-9_-]+)/);
-      if (shortFormMatch) {
-        console.log('✅ Short form match found:', shortFormMatch[1]);
-        return shortFormMatch[1];
-      }
-
-      // Handle /d/e/ format URLs (e.g., /d/e/1FAIpQL...)
-      const longFormWithEMatch = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
-      if (longFormWithEMatch) {
-        console.log('✅ Long form with /e/ match found:', longFormWithEMatch[1]);
-        return longFormWithEMatch[1];
-      }
-
-      // Handle /d/ format URLs (e.g., /d/1FAIpQL...)
-      const longFormMatch = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
-      if (longFormMatch) {
-        console.log('✅ Long form match found:', longFormMatch[1]);
-        return longFormMatch[1];
-      }
-
-      console.log('❌ No form ID pattern matched');
-      return null;
-    } catch (error) {
-      console.error('Failed to extract form ID:', error);
-      return null;
-    }
-  }
-
-  static validateFormUrl(url: string): boolean {
-    const formId = this.extractFormId(url);
-    return formId !== null;
   }
 
   // Add detection method (copied from client/src/lib/googleForms.ts)
@@ -195,11 +167,59 @@ export class GoogleFormsManager {
     }
   }
 
+
   private static buildViewUrl(originalUrl: string, formId: string): string {
     if (originalUrl.includes('/d/e/')) {
       return `https://docs.google.com/forms/d/e/${formId}/viewform`;
     } else {
       return `https://docs.google.com/forms/d/${formId}/viewform`;
     }
+  }
+
+  private static buildSubmitUrl(originalUrl: string, formId: string): string {
+    // Preserve the original URL structure and replace viewform with formResponse
+    if (originalUrl.includes('/d/e/')) {
+      return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
+    } else {
+      return `https://docs.google.com/forms/d/${formId}/formResponse`;
+    }
+  }
+
+  private static extractFormId(url: string): string | null {
+    try {
+      console.log('🔧 Extracting form ID from URL:', url);
+
+      // Handle both short (forms.gle) and long Google Forms URLs
+      const shortFormMatch = url.match(/forms\.gle\/([a-zA-Z0-9_-]+)/);
+      if (shortFormMatch) {
+        console.log('✅ Short form match found:', shortFormMatch[1]);
+        return shortFormMatch[1];
+      }
+
+      // Handle /d/e/ format URLs (e.g., /d/e/1FAIpQL...)
+      const longFormWithEMatch = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
+      if (longFormWithEMatch) {
+        console.log('✅ Long form with /e/ match found:', longFormWithEMatch[1]);
+        return longFormWithEMatch[1];
+      }
+
+      // Handle /d/ format URLs (e.g., /d/1FAIpQL...)
+      const longFormMatch = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
+      if (longFormMatch) {
+        console.log('✅ Long form match found:', longFormMatch[1]);
+        return longFormMatch[1];
+      }
+
+      console.log('❌ No form ID pattern matched');
+      return null;
+    } catch (error) {
+      console.error('Failed to extract form ID:', error);
+      return null;
+    }
+  }
+
+  static validateFormUrl(url: string): boolean {
+    const formId = this.extractFormId(url);
+    return formId !== null;
   }
 }
