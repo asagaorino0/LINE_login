@@ -388,7 +388,7 @@ export default function Home() {
               style={{ backgroundColor: "#1e9df1" }}
               data-testid="button-access-form"
             >
-              <Card className="mb-6 w-full border-0" style={{ backgroundColor: "#1e9df1" }}>
+              <Card className="w-full border-0" style={{ backgroundColor: "#1e9df1" }}>
                 <CardContent className="pt-6">
                   <div className="text-center text-white">
                     {isSendingMessage ? (
