@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,51 +12,54 @@ import { ToastNotification, useToastNotification } from "../components/ui/toast-
 import { GoogleFormsManager } from "../lib/googleForms";
 
 export default function Home() {
+  // ---------- UI / 状態 ----------
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
+
   const [formUrl, setFormUrl] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAutoMode, setIsAutoMode] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
-  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
-  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
-  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
+  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
+
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null); // プリフィルURL（実際に開く）
+  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
+  const [formDescription, setFormDescription] = useState<string>("リンクを開くにはこちらをタップ");
+
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
-  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
-  const [formDescription, setFormDescription] = useState<string>("");
 
-
-
-
-  /** 1) URL パラメータ取得は1箇所に統合 */
+  // ---------- URLパラメータ（?form=...） ----------
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const formParam = urlParams.get("form");
+    const params = new URLSearchParams(window.location.search);
+    const formParam = params.get("form");
     if (formParam) {
       try {
-        const decodedFormUrl = decodeURIComponent(formParam);
-        setFormUrl(decodedFormUrl);
+        const decoded = decodeURIComponent(formParam);
+        setFormUrl(decoded);
         setIsAutoMode(true);
-        autoTriggeredRef.current = false; // 新しいURL受信時は自動発火をリセット
-        console.log("[auto] activated with form:", decodedFormUrl);
+        autoTriggeredRef.current = false;
+        console.log("[auto] activated with form:", decoded);
       } catch (e) {
         console.error("Failed to parse URL parameters:", e);
       }
     }
   }, []);
 
-  /** 2) LIFF 初期化 & 既ログイン確認（任意：自動ログインを有効化するならコメント解除） */
+  // ---------- LIFF初期化 ----------
   useEffect(() => {
-    const initLiff = async () => {
+    const init = async () => {
       try {
         await liffManager.init();
         setIsInitialized(true);
-        // Check if already logged in
+
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
@@ -65,28 +68,20 @@ export default function Home() {
             await saveUserToBackend(profile);
           }
         }
-
-        // ▼【任意】自動ログイン：autoモードで未ログインなら自動で login()
-        // if (!liffManager.isLoggedIn() && isAutoMode) {
-        //   try {
-        //     const profile = await liffManager.login();
-        //     setUserProfile(profile);
-        //     setIsLoggedIn(true);
-        //     await saveUserToBackend(profile);
-        //   } catch (e) {
-        //     console.error("Auto login failed:", e);
-        //   }
-        // }
       } catch (e) {
         console.error("LIFF initialization failed:", e);
         setError("LIFF初期化に失敗しました。ページをリロードしてください。");
       }
     };
-    initLiff();
-    // isAutoMode を依存にすると初期化を再実行してしまうので入れない
+    void init();
   }, []);
 
-  /** 3) ユーザー＆URL準備ができたらプリフィルURL生成 */
+  // ---------- タイトル反映 ----------
+  useEffect(() => {
+    if (formTitle) document.title = formTitle;
+  }, [formTitle]);
+
+  // ---------- プリフィルURL生成（ログイン＆URL揃ったら） ----------
   useEffect(() => {
     const run = async () => {
       if (userProfile && formUrl && isAutoMode) {
@@ -105,17 +100,20 @@ export default function Home() {
         setIsGeneratingUrl(false);
       }
     };
-    run();
-  }, [userProfile, formUrl, isAutoMode, lastDetectionResult, detectedEntries]);
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId]);
 
-  /** 4) 自動オープン：条件がそろったら1回だけ発火 */
+  // ---------- 自動遷移（1回だけ） ----------
   useEffect(() => {
     if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
-      autoTriggeredRef.current = true; // 二重発火防止
-      void sendLineMessageAndOpenForm(); // “火と忘れ”で呼ぶ
+      autoTriggeredRef.current = true;
+      void sendLineMessageAndOpenForm();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
 
+  // ---------- helpers ----------
   const saveUserToBackend = async (profile: LiffProfile) => {
     try {
       await apiRequest("POST", "/api/line-users", {
@@ -146,12 +144,13 @@ export default function Home() {
   });
 
   const handleLineLogin = () => {
-    if (loginMutation.isPending) return;
-    setError(null);
-    loginMutation.mutate();
+    if (!loginMutation.isPending) {
+      setError(null);
+      loginMutation.mutate();
+    }
   };
 
-  /** Google Forms の entry ID 検出 */
+  // ---------- Google Forms 解析（entry ID / title / desc） ----------
   const handleDetectEntries = async () => {
     if (!formUrl.trim()) {
       showToast("フォームURLを先に入力してください", "error");
@@ -160,23 +159,27 @@ export default function Home() {
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
+
     try {
-      const result = await GoogleFormsManager.detectEntryIds(formUrl);
+      // 重要：API向けに正規化
+      const normalized = GoogleFormsManager["normalizeFormUrl"]
+        ? // 型の都合で bracket access（normalizeFormUrl は privateならこの行は削除）
+        (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+        : formUrl;
+
+      const result = await GoogleFormsManager.detectEntryIds(normalized);
+
       if (result.success) {
-        console.log("📋 Googleフォームタイトル:", result.title);
-        if (result.title) {
-          setFormTitle(result.title); // ★ここで保存
-        }
-        if (result.description) {
-          setFormDescription(result.description); // ★ここで保存
-        }
-        const detectionResult = {
+        if (result.title) setFormTitle(result.title);
+        if (result.description) setFormDescription(result.description);
+
+        const detection = {
           userId: result.userId!,
           message: result.message,
-          formUrl,
+          formUrl: normalized,
         };
         setDetectedEntries({ userId: result.userId, message: result.message });
-        setLastDetectionResult(detectionResult);
+        setLastDetectionResult(detection);
       } else {
         showToast(`検出に失敗しました: ${result.error}`, "error");
       }
@@ -187,37 +190,39 @@ export default function Home() {
       setIsDetecting(false);
     }
   };
-  useEffect(() => {
-    if (formTitle) {
-      document.title = formTitle;  // head の <title> を変更
-    }
-  }, [formTitle]);
 
-
-
-  /** プリフィルURL生成（C: entry ID フォールバックを必ず入れる） */
+  // ---------- プリフィルURL（=実際に開くURL） ----------
   const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
     try {
       const baseUrl = originalUrl.split("?")[0];
 
       // 最優先：直近の検出結果（同じフォームURL）
-      let userIdEntry = lastDetectionResult?.formUrl === originalUrl
-        ? lastDetectionResult.userId
-        : detectedEntries?.userId;
+      let userIdEntry =
+        lastDetectionResult?.formUrl === originalUrl
+          ? lastDetectionResult.userId
+          : detectedEntries?.userId;
 
-      // 自動検出の最終チャレンジ
+      // 最終チャレンジ（自動検出）
       if (!userIdEntry) {
         try {
           const detection = await GoogleFormsManager.detectEntryIds(originalUrl);
           if (detection.success && detection.userId) {
             userIdEntry = detection.userId;
-            setLastDetectionResult({ userId: detection.userId, message: detection.message, formUrl: originalUrl });
+            setLastDetectionResult({
+              userId: detection.userId,
+              message: detection.message,
+              formUrl: originalUrl,
+            });
             setDetectedEntries({ userId: detection.userId, message: detection.message });
+            if (detection.title) setFormTitle(detection.title);
+            if (detection.description) setFormDescription(detection.description);
           }
-        } catch { /* noop */ }
+        } catch {
+          // noop
+        }
       }
 
-      // フォールバック（フォームにより異なるが“空で壊れる”のを防止）
+      // フォールバック
       userIdEntry = userIdEntry ?? "entry.1795297917";
 
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
@@ -231,36 +236,61 @@ export default function Home() {
     }
   };
 
-  /** A: フォームは必ず開く（送信は“火と忘れ”） */
+  // ---------- 共有用URL（プレビュー） / 遷移用URL（アプリ） ----------
+  const viewUrlNormalized = useMemo(() => {
+    try {
+      return (GoogleFormsManager as any).normalizeFormUrl
+        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+        : formUrl;
+    } catch {
+      return formUrl;
+    }
+  }, [formUrl]);
+
+  const appUrl = useMemo(() => {
+    if (!viewUrlNormalized) return "";
+    const u = new URL(window.location.origin);
+    u.searchParams.set("form", viewUrlNormalized);
+    u.searchParams.set("redirect", "true");
+    // "?form=...&redirect=true" を作る
+    return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
+  }, [viewUrlNormalized]);
+
+  const previewUrl = useMemo(() => {
+    if (!viewUrlNormalized) return "";
+    const params = new URLSearchParams({
+      form: viewUrlNormalized,
+      title: formTitle || "",
+      desc: formDescription || "リンクを開くにはこちらをタップ",
+    });
+    return `${window.location.origin}/api/link-preview?${params.toString()}`;
+  }, [viewUrlNormalized, formTitle, formDescription]);
+
+  // ---------- LINE送信 + 遷移 ----------
   const sendLineMessageAndOpenForm = async () => {
     if (!userProfile || !generatedUrl) return;
     setIsSendingMessage(true);
 
-    // 送信は待たずに実行（失敗してもフォームは開く）
+    // 送信は待たずに（失敗しても遷移はする）
     apiRequest("POST", "/api/line/send-message", {
       userId: userProfile.userId,
       type: "card",
-      formUrl: generatedUrl,          // ★カードの「フォームを開く」に使う
-      title: "Googleフォーム回答通知",        // 任意（altTextにも反映）
+      formUrl: generatedUrl,
+      title: formTitle || "Googleフォーム回答通知",
+      description: formDescription || "リンクを開くにはこちらをタップ",
     }).catch((e) => {
       console.warn("send-message failed (ignored):", e);
     });
 
-    // すぐフォームへ遷移（既存ロジックのまま）
-    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    // 遷移（端末別）
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
       window.location.href = generatedUrl;
     } else {
       window.open(generatedUrl, "_blank");
     }
 
-
-    // フォームを開く
-    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-      window.location.href = generatedUrl;
-    } else {
-      window.open(generatedUrl, "_blank");
-    }
-    console.log('url::', generatedUrl, 'entryID::', detectedEntries, 'uid::', userProfile.userId)
+    console.log("open:", generatedUrl, "entries:", detectedEntries, "uid:", userProfile.userId);
     setIsSendingMessage(false);
   };
 
@@ -269,6 +299,7 @@ export default function Home() {
     if (!isLoggedIn) handleLineLogin();
   };
 
+  // ---------- UI ----------
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -350,23 +381,11 @@ export default function Home() {
               onClick={sendLineMessageAndOpenForm}
               disabled={isSendingMessage || !generatedUrl}
               className="w-full p-0 h-auto"
-              // style={{ backgroundColor: "#1e9df1" }}
               data-testid="button-access-form"
             >
-              {/* <Card className="w-full border-0" style={{ backgroundColor: "#1e9df1" }}>
-                <CardContent className="pt-6"> */}
               <div className="text-center text-blue">
-                {/* {isSendingMessage ? (
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        <span>メッセージ送信中...</span>
-                      </div>
-                    ) : ( */}
                 <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
-                {/*  )} */}
               </div>
-              {/* </CardContent>
-              </Card> */}
             </button>
           )
         )}
@@ -415,6 +434,7 @@ export default function Home() {
                         )}
                       </Button>
                     </div>
+
                     <div className="space-y-3">
                       <div className="p-4 bg-green-50 rounded-lg border">
                         {detectedEntries && (
@@ -428,6 +448,7 @@ export default function Home() {
                         <p className="text-xs text-green-700 mb-3">
                           フォームのデータが公式LINEで利用可能になります
                         </p>
+
                         <div className="bg-white rounded border p-3 mb-3">
                           <code className="text-xs font-mono text-gray-800 break-all">
                             {isDetecting ? (
@@ -435,28 +456,19 @@ export default function Home() {
                                 <div className="animate-spin rounded-full h-5 w-5 border-b border-primary"></div>
                               </div>
                             ) : detectedEntries ? (
-                              `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`
+                              appUrl
                             ) : (
                               <div className="flex justify-center">・・・</div>
                             )}
                           </code>
                         </div>
                       </div>
+
                       <Button
                         onClick={() => {
-                          const userLink = `${window.location.origin}/api/link-preview?` + new URLSearchParams({
-                            form: formUrl,                      // 実際の GoogleフォームURL
-                            desc: formDescription, // 好きな説明文（任意）
-                            // desc: formDescription, // 好きな説明文（任意）
-                            // title: formTitle,                // 強制上書きしたいときだけ
-                            // image: 'https://.../og.png',     // 共有プレビュー画像を変えたいときだけ
-                          }).toString();
-                          // navigator.clipboard.writeText(shareUrl);
-                          // console.log(shareUrl)
-                          // showToast('共有リンクをコピーしました', 'success');
-
-                          // const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                          navigator.clipboard.writeText(userLink);
+                          if (!formUrl) return;
+                          const link = previewUrl || appUrl;
+                          navigator.clipboard.writeText(link);
                           showToast("リンクをコピーしました", "success");
                         }}
                         variant={detectedEntries ? "default" : "outline"}
@@ -464,7 +476,7 @@ export default function Home() {
                         className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2"
                       >
                         <Copy className="w-3 h-3 mr-1" />
-                        リンクをコピー
+                        リンクをコピー（LINE用プレビュー）
                       </Button>
                     </div>
                   </div>
@@ -510,6 +522,7 @@ export default function Home() {
                 )}
               </CardContent>
             </Card>
+
             <div className="flex flex-row justify-center m-4">
               <button onClick={() => setIsAdmin(false)} className="px-2">
                 {isAdmin ? (
@@ -555,7 +568,7 @@ export default function Home() {
           </div>
         </div>
       </footer>
-      {/* Toast Notification */}
+
       <ToastNotification
         message={toast.message}
         type={toast.type}
