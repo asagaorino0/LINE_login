@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -23,8 +23,23 @@ export default function Home() {
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
-
   const { toast, showToast, hideToast } = useToastNotification();
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const formParam = urlParams.get('form');
+    if (formParam) {
+      try {
+        const decodedFormUrl = decodeURIComponent(formParam);
+        setFormUrl(decodedFormUrl);
+        setIsAutoMode(true);
+        autoTriggeredRef.current = false; // ★追加：新しいURL受信時は自動発火をリセット
+        console.log('Auto mode activated with form:', decodedFormUrl);
+      } catch (error) {
+        console.error('Failed to parse URL parameters:', error);
+      }
+    }
+  }, []);
 
   // Initialize LIFF on component mount
   useEffect(() => {
@@ -32,14 +47,12 @@ export default function Home() {
       try {
         await liffManager.init();
         setIsInitialized(true);
-
         // Check if already logged in
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
             setUserProfile(profile);
             setIsLoggedIn(true);
-
             // Save user to backend
             await saveUserToBackend(profile);
           }
@@ -49,7 +62,6 @@ export default function Home() {
         setError('LIFF初期化に失敗しました。ページをリロードしてください。');
       }
     };
-
     initLiff();
   }, []);
 
@@ -72,17 +84,30 @@ export default function Home() {
     }
   }, [
     userProfile,
-    // formUrl,
+    formUrl,
     isAutoMode,
     lastDetectionResult,
     detectedEntries
+  ]);
+
+  useEffect(() => {
+    // 自動モード & ログイン済み & URL生成済み & まだ未発火 のときだけ実行
+    if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
+      autoTriggeredRef.current = true; // 二重発火防止
+      // 非同期でもOK：送信完了前にページ遷移してもAPIはサーバ側で処理されます
+      void sendLineMessageAndOpenForm();
+    }
+  }, [
+    isAutoMode,
+    isLoggedIn,
+    userProfile?.userId, // userProfile の変化検知
+    generatedUrl
   ]);
 
   // URLパラメータからフォーム情報を読み取り
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const formParam = urlParams.get('form');
-
     if (formParam) {
       try {
         const decodedFormUrl = decodeURIComponent(formParam);
@@ -264,20 +289,15 @@ export default function Home() {
   // Function to send LINE message when accessing form
   const sendLineMessageAndOpenForm = async () => {
     if (!userProfile || !generatedUrl) return;
-
     setIsSendingMessage(true);
-
     try {
       console.log('📨 Sending LINE message to user:', userProfile.userId);
-
       // Send message via API
       const response = await apiRequest('POST', '/api/line/send-message', {
         userId: userProfile.userId,
         message: 'テスト'
       });
-
       console.log('✅ Message sent successfully:', response);
-
       // スマホ対応: window.openの代わりにlocation.hrefを使用
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
         // スマホの場合は現在のタブでフォームを開く
@@ -286,9 +306,7 @@ export default function Home() {
         // PCの場合は新しいタブで開く
         window.open(generatedUrl, '_blank');
       }
-
       // アラート削除 - 成功メッセージは表示しない
-
     } catch (error) {
       console.error('❌ Failed to send LINE message:', error);
       showToast('メッセージ送信に失敗しました', 'error');
@@ -471,7 +489,6 @@ export default function Home() {
                         <Input
                           type="url"
                           value={formUrl}
-
                           onChange={(e) => {
                             setFormUrl(e.target.value);
                             // Reset detected entries when URL changes
@@ -519,7 +536,6 @@ export default function Home() {
             </div>
           )} */}
                     </div>
-
                     <div className="space-y-3">
                       <div className="p-4 bg-green-50 rounded-lg border">
                         {detectedEntries &&
