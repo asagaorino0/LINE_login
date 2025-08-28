@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             type: 'box',
             layout: 'vertical',
             contents: [
-              { type: 'text', text: title || '申し込みフォーム', weight: 'bold', size: 'md' },
+              { type: 'text', text: title || 'Googleフォーム回答通知', weight: 'bold', size: 'md' },
             ],
           },
           body: {
@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             contents: [
               {
                 type: 'text',
-                text: 'LINE連携済みです。必要事項を入力後、送信してください。',
+                text: 'フォームを送信後、通知してください。',
                 wrap: true,
                 size: 'sm',
                 color: '#555555',
@@ -62,22 +62,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             layout: 'vertical',
             spacing: 'sm',
             contents: [
-              {
-                type: 'button',
-                style: 'primary',
-                action: {
-                  type: 'uri',
-                  label: 'フォームを開く',
-                  uri: formUrl,
-                },
-              },
+              // {
+              //   type: 'button',
+              //   style: 'primary',
+              //   action: {
+              //     type: 'uri',
+              //     label: 'フォームを開く',
+              //     uri: formUrl,
+              //   },
+              // },
               {
                 type: 'button',
                 style: 'secondary',
                 action: {
                   // ★ これを押すとユーザーから公式LINEへ同文言が送信されます（webhook不要）
                   type: 'message',
-                  label: '回答済み',
+                  label: '回答済を通知',
                   text: '申し込みフォーム回答済み',
                 },
               },
