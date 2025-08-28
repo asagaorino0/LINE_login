@@ -222,7 +222,7 @@ export default function Home() {
       userId: userProfile.userId,
       type: "card",
       formUrl: generatedUrl,          // ★カードの「フォームを開く」に使う
-      title: "申し込みフォーム",        // 任意（altTextにも反映）
+      title: "Googleフォーム回答通知",        // 任意（altTextにも反映）
     }).catch((e) => {
       console.warn("send-message failed (ignored):", e);
     });

@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (type === 'card' && formUrl) {
       const flex: FlexMessage = {
         type: 'flex',
-        altText: title ? `${title}（フォーム連携）` : 'フォーム連携カード',
+        altText: title ? `${title}` : 'Googleフォーム連携カード',
         contents: {
           type: 'bubble',
           header: {
