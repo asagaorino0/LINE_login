@@ -62,116 +62,111 @@ export class GoogleFormsManager {
   // Add detection method (copied from client/src/lib/googleForms.ts)
   public static async detectEntryIds(
     formUrl: string
-  ): Promise<{ userId?: string; message?: string; success: boolean; error?: string; title?: string, description?: string }> {
+  ): Promise<{ userId?: string; message?: string; title?: string; description?: string; success: boolean; error?: string }> {
     try {
       console.log('Attempting to detect entry IDs for form:', formUrl);
-      const formId = this.extractFormId(formUrl);
+
+      // 1) URL正規化 → それを以降ずっと使う
+      const normalized = this.normalizeFormUrl(formUrl);
+      const formId = this.extractFormId(normalized);
       if (!formId) throw new Error('Could not extract form ID');
-      const viewUrl = this.buildViewUrl(formUrl, formId);
+
+      const viewUrl = this.buildViewUrl(normalized, formId);
       console.log('🔗 Built view URL:', viewUrl);
+
+      // 2) まずは自前APIでHTML解析（CORS回避）
+      try {
+        const r = await fetch(`/api/forms/inspect?form=${encodeURIComponent(viewUrl)}`);
+        if (r.ok) {
+          const data = await r.json();
+          if (data.success) {
+            const entries: string[] = data.entries || [];
+            if (entries.length > 0) {
+              return {
+                userId: entries[0],
+                message: entries[1],
+                title: data.title || undefined,
+                description: data.description || 'リンクを開くにはこちらをタップ',
+                success: true,
+              };
+            }
+          }
+        }
+      } catch {
+        // APIが無い/失敗 → 次の手段へ
+      }
+
+      // 3) 公開プロキシでHTML取得（最後の手段）
       let html: string | null = null;
       const proxyServices = [
         { name: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`, contentKey: 'contents' },
         { name: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(viewUrl)}`, contentKey: null },
-        { name: 'thingproxy', url: `https://thingproxy.freeboard.io/fetch/${viewUrl}`, contentKey: null }
-      ];
+        { name: 'thingproxy', url: `https://thingproxy.freeboard.io/fetch/${viewUrl}`, contentKey: null },
+      ] as const;
+
       for (const proxy of proxyServices) {
         try {
           console.log(`🔍 Trying ${proxy.name} proxy...`);
           const response = await fetch(proxy.url);
           if (!response.ok) continue;
-          if (proxy.contentKey) {
-            const data = await response.json();
-            html = data[proxy.contentKey];
-          } else {
-            html = await response.text();
-          }
-          if (html) {
-            console.log(`✅ ${proxy.name} succeeded`);
-            break;
-          }
-        } catch (error: any) {
-          console.log(`❌ ${proxy.name} error:`, error.message);
-          continue;
+          html = proxy.contentKey ? (await response.json())[proxy.contentKey] : await response.text();
+          if (html) { console.log(`✅ ${proxy.name} succeeded`); break; }
+        } catch (err: any) {
+          console.log(`❌ ${proxy.name} error:`, err?.message || err);
         }
       }
       if (!html) throw new Error('No HTML content received from proxy');
-      // --- ★ タイトル抽出 ---
+
+      // 4) タイトル/説明
       let title: string | undefined;
       const titleTagMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
-      if (titleTagMatch) {
-        title = titleTagMatch[1].replace(/ - Google フォーム$/, '').trim();
-      } else {
-        // fallback: ヘッダーの div から取得
+      if (titleTagMatch) title = titleTagMatch[1].replace(/ - Google フォーム$/, '').trim();
+      if (!title) {
         const headerMatch = html.match(/freebirdFormviewerViewHeaderTitle[^>]*>(.*?)<\/div>/);
-        if (headerMatch) {
-          title = headerMatch[1].trim();
-        }
+        if (headerMatch) title = headerMatch[1].trim();
       }
-      console.log('📋 Detected form title:', title);
-      // --- ★ description抽出 ---
       let description: string | undefined;
       const descriptionTagMatch = html.match(/<meta[^>]+itemprop=["']description["'][^>]+content=["']([^"']+)["']/i);
-      if (descriptionTagMatch) {
-        description = descriptionTagMatch[1].trim();
-      } else {
-        description = 'リンクを開くにはこちらをタップWWW';
-      }
-      console.log('📋 Detected form title:', title, description);
-      // --- Entry ID 抽出処理（既存） ---
+      description = descriptionTagMatch ? descriptionTagMatch[1].trim() : 'リンクを開くにはこちらをタップ';
+
+      // 5) entry ID
       const patterns = [
         /name="entry\.(\d+)"/g,
-        /entry\.(\d+)/g,
         /"entry\.(\d+)"/g,
-        /entry_(\d+)/g,
         /'entry\.(\d+)'/g,
+        /entry_(\d+)/g,
         /\[(\d{8,}),[^,]*?,null,.*?\[(\d{8,}),null,1\]/g,
       ];
-      const foundEntries = new Set<string>();
-      patterns.forEach((pattern, index) => {
-        const matches = Array.from(html.matchAll(pattern));
-        const entries = matches.map((match) =>
-          index === patterns.length - 1 ? (match as RegExpMatchArray)[2] : (match as RegExpMatchArray)[1]
-        ).filter(Boolean);
-        entries.forEach((entry) => {
-          if (entry && entry.length >= 8) foundEntries.add(`entry.${entry}`);
+      const found = new Set<string>();
+      patterns.forEach((re, idx) => {
+        const matches = Array.from(html!.matchAll(re));
+        matches.forEach((m) => {
+          const id = idx === patterns.length - 1 ? (m as RegExpMatchArray)[2] : (m as RegExpMatchArray)[1];
+          if (id && id.length >= 8) found.add(`entry.${id}`);
         });
       });
 
-      const uniqueEntries = Array.from(foundEntries);
+      const uniqueEntries = Array.from(found);
       console.log('🎯 All found entry IDs:', uniqueEntries);
-
       if (uniqueEntries.length === 0) throw new Error('No entry IDs found in HTML');
 
-      return {
-        userId: uniqueEntries[0],
-        message: uniqueEntries[1] || undefined,
-        title,
-        description,
-        success: true,
-      };
-    } catch (fetchError: any) {
-      console.log('❌ All detection methods failed:', fetchError);
-      return { success: false, error: 'Entry ID検出に失敗しました。手動検出をお試しください。' };
+      return { userId: uniqueEntries[0], message: uniqueEntries[1], title, description, success: true };
+    } catch (e: any) {
+      console.log('❌ All detection methods failed:', e);
+      return { success: false, error: 'Entry ID検出に失敗しました。フォームURL/公開状態をご確認ください。' };
     }
   }
 
 
-  private static buildViewUrl(originalUrl: string, formId: string): string {
-    if (originalUrl.includes('/d/e/')) {
-      return `https://docs.google.com/forms/d/e/${formId}/viewform`;
-    } else {
-      return `https://docs.google.com/forms/d/${formId}/viewform`;
-    }
-  }
 
-  private static buildSubmitUrl(originalUrl: string, formId: string): string {
-    // Preserve the original URL structure and replace viewform with formResponse
-    if (originalUrl.includes('/d/e/')) {
-      return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
-    } else {
-      return `https://docs.google.com/forms/d/${formId}/formResponse`;
-    }
+  private static buildViewUrl(_originalUrl: string, formId: string): string {
+    // 1FAIpQL で始まるIDは /d/e/ 形式
+    if (/^1FAIpQL/.test(formId)) return `https://docs.google.com/forms/d/e/${formId}/viewform`;
+    return `https://docs.google.com/forms/d/${formId}/viewform`;
+  }
+  private static buildSubmitUrl(_originalUrl: string, formId: string): string {
+    if (/^1FAIpQL/.test(formId)) return `https://docs.google.com/forms/d/e/${formId}/formResponse`;
+    return `https://docs.google.com/forms/d/${formId}/formResponse`;
   }
 
   // googleForms.ts

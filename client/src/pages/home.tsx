@@ -444,19 +444,20 @@ export default function Home() {
                       </div>
                       <Button
                         onClick={() => {
-                          const shareUrl = `${window.location.origin}/api/link-preview?` + new URLSearchParams({
+                          const userLink = `${window.location.origin}/api/link-preview?` + new URLSearchParams({
                             form: formUrl,                      // 実際の GoogleフォームURL
                             desc: formDescription, // 好きな説明文（任意）
+                            // desc: formDescription, // 好きな説明文（任意）
                             // title: formTitle,                // 強制上書きしたいときだけ
                             // image: 'https://.../og.png',     // 共有プレビュー画像を変えたいときだけ
                           }).toString();
-                          navigator.clipboard.writeText(shareUrl);
-                          console.log(shareUrl)
-                          showToast('共有リンクをコピーしました', 'success');
+                          // navigator.clipboard.writeText(shareUrl);
+                          // console.log(shareUrl)
+                          // showToast('共有リンクをコピーしました', 'success');
 
                           // const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                          // navigator.clipboard.writeText(userLink);
-                          // showToast("リンクをコピーしました", "success");
+                          navigator.clipboard.writeText(userLink);
+                          showToast("リンクをコピーしました", "success");
                         }}
                         variant={detectedEntries ? "default" : "outline"}
                         size="sm"
