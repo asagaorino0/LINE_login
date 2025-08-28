@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
-import { RefreshCw, Github, Shield, HelpCircle, Copy } from "lucide-react";
+import { Github, Shield, HelpCircle, Copy } from "lucide-react";
 import { liffManager, type LiffProfile } from "../lib/liff";
 import { apiRequest } from "../lib/queryClient";
 import { ToastNotification, useToastNotification } from "../components/ui/toast-notification";
@@ -162,9 +162,8 @@ export default function Home() {
 
     try {
       // 重要：API向けに正規化
-      const normalized = GoogleFormsManager["normalizeFormUrl"]
-        ? // 型の都合で bracket access（normalizeFormUrl は privateならこの行は削除）
-        (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+      const normalized = (GoogleFormsManager as any).normalizeFormUrl
+        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
         : formUrl;
 
       const result = await GoogleFormsManager.detectEntryIds(normalized);
@@ -247,21 +246,20 @@ export default function Home() {
     }
   }, [formUrl]);
 
+  // ユーザーが踏む実リンク（アプリ → 自動でフォームへ）
   const appUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
-    const u = new URL(window.location.origin);
-    u.searchParams.set("form", viewUrlNormalized);
-    u.searchParams.set("redirect", "true");
-    // "?form=...&redirect=true" を作る
     return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
   }, [viewUrlNormalized]);
 
+  // LINEに貼る用：OG を差し替えるサーバー経由リンク
   const previewUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
     const params = new URLSearchParams({
       form: viewUrlNormalized,
       title: formTitle || "",
       desc: formDescription || "リンクを開くにはこちらをタップ",
+      v: String(Date.now()), // キャッシュ回避（テスト時）
     });
     return `${window.location.origin}/api/link-preview?${params.toString()}`;
   }, [viewUrlNormalized, formTitle, formDescription]);
@@ -331,15 +329,9 @@ export default function Home() {
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="text-center">
-                <img
-                  src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300"
-                  alt="スマートフォンでLINEアプリを使用している様子"
-                  className="w-32 h-24 object-cover rounded-lg mx-auto mb-4"
-                />
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
                 <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                  LINEアカウントでログインして、<br />
-                  ユーザーIDを安全に取得します
+                  LINEアカウントでログインして、ユーザーIDを安全に取得します
                 </p>
                 <Button
                   onClick={handleLineLogin}
@@ -347,14 +339,7 @@ export default function Home() {
                   className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
                   data-testid="button-line-login"
                 >
-                  {loginMutation.isPending ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>認証中...</span>
-                    </div>
-                  ) : (
-                    <span>LINEでログイン</span>
-                  )}
+                  {loginMutation.isPending ? "認証中..." : "LINEでログイン"}
                 </Button>
               </div>
             </CardContent>
@@ -368,10 +353,7 @@ export default function Home() {
               <CardContent className="pt-6">
                 <div className="text-center">
                   <h3 className="text-base font-semibold">
-                    <div className="flex items-center justify-center space-x-2 text-blue-600">
-                      <div className="animate-spin h-4 w-4 border-2 border-blue-800 border-t-transparent rounded-full"></div>
-                      <span>URLを生成中...</span>
-                    </div>
+                    <span className="text-blue-600">URLを生成中...</span>
                   </h3>
                 </div>
               </CardContent>
@@ -398,6 +380,7 @@ export default function Home() {
                 <div className="text-center mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
                 </div>
+
                 {isAdmin ? (
                   <div className="space-y-4">
                     <div>
@@ -414,6 +397,7 @@ export default function Home() {
                           className="pr-5 text-gray-600 text-sm"
                         />
                       </div>
+
                       <Button
                         onClick={handleDetectEntries}
                         disabled={isDetecting}
@@ -421,17 +405,7 @@ export default function Home() {
                         size="sm"
                         className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
                       >
-                        {isDetecting ? (
-                          <div className="flex items-center space-x-2">
-                            <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-600"></div>
-                            <span>連携リンク生成中...</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-1">
-                            <span>✨</span>
-                            <span>連携リンクを生成</span>
-                          </div>
-                        )}
+                        {isDetecting ? "連携リンク生成中..." : "✨ 連携リンクを生成"}
                       </Button>
                     </div>
 
@@ -451,15 +425,7 @@ export default function Home() {
 
                         <div className="bg-white rounded border p-3 mb-3">
                           <code className="text-xs font-mono text-gray-800 break-all">
-                            {isDetecting ? (
-                              <div className="flex justify-center">
-                                <div className="animate-spin rounded-full h-5 w-5 border-b border-primary"></div>
-                              </div>
-                            ) : detectedEntries ? (
-                              appUrl
-                            ) : (
-                              <div className="flex justify-center">・・・</div>
-                            )}
+                            {isDetecting ? "..." : (detectedEntries ? appUrl : "・・・")}
                           </code>
                         </div>
                       </div>
@@ -467,7 +433,7 @@ export default function Home() {
                       <Button
                         onClick={() => {
                           if (!formUrl) return;
-                          const link = previewUrl || appUrl;
+                          const link = previewUrl || appUrl; // プレビュー置換リンクを優先
                           navigator.clipboard.writeText(link);
                           showToast("リンクをコピーしました", "success");
                         }}
@@ -485,31 +451,18 @@ export default function Home() {
                     <div className="p-3 bg-amber-50 rounded-lg mb-4">
                       <h5 className="text-xs font-semibold text-amber-800 mb-1">Googleフォーム側の重要な設定</h5>
                       <p className="text-xs text-amber-700 mb-2">
-                        ⚠️LINEと連携するため、
-                        <strong style={{ color: "red" }}>必ず次の設定をしてください</strong>
+                        ⚠️LINEと連携するため、<strong style={{ color: "red" }}>必ず次の設定をしてください</strong>
                       </p>
                       <div className="bg-white rounded border p-2 mb-2">
                         <p className="text-xs text-gray-600">
                           📝 <strong>設定手順：</strong><br />
                           1. 質問１のタイトル: 「LINE User ID」<br />
                           2. 質問１の回答形式: 記述式（短文）<br />
-                          3. 質問１の必須: ON<br />
-                          （メールアドレスの設定はあってもなくてもok）
-                        </p>
-                      </div>
-                      <p className="text-xs text-amber-700 mb-2">
-                        UID欄が空白になる問題を防ぐため、<br />
-                        <strong>以下の設定を推奨します</strong>
-                      </p>
-                      <div className="bg-white rounded border p-2 mb-2">
-                        <p className="text-xs text-gray-600">
-                          📝 <strong>設定手順：</strong><br />
-                          1. Googleフォーム編集画面 → 「設定」タブ<br />
-                          2. 「回答」 → 「回答を1回に制限する」をオン<br />
-                          3. これで「別の回答を送信」が無効化されます
+                          3. 質問１の必須: ON（メールアドレス設定は任意）
                         </p>
                       </div>
                     </div>
+
                     <Button
                       onClick={() => setIsAdmin(true)}
                       variant="default"
