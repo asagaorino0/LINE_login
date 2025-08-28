@@ -60,24 +60,20 @@ export class GoogleFormsManager {
   }
 
   // Add detection method (copied from client/src/lib/googleForms.ts)
-  public static async detectEntryIds(formUrl: string): Promise<{ userId?: string; message?: string; success: boolean; error?: string }> {
+  public static async detectEntryIds(
+    formUrl: string
+  ): Promise<{ userId?: string; message?: string; success: boolean; error?: string; title?: string }> {
     try {
       console.log('Attempting to detect entry IDs for form:', formUrl);
 
       const formId = this.extractFormId(formUrl);
-      if (!formId) {
-        throw new Error('Could not extract form ID');
-      }
+      if (!formId) throw new Error('Could not extract form ID');
 
-      // Convert to viewform URL to analyze structure  
       const viewUrl = this.buildViewUrl(formUrl, formId);
-      console.log('🔗 Original form URL:', formUrl);
-      console.log('🔗 Extracted form ID:', formId);
       console.log('🔗 Built view URL:', viewUrl);
 
-      let html = null;
+      let html: string | null = null;
 
-      // Try multiple CORS proxy services
       const proxyServices = [
         { name: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`, contentKey: 'contents' },
         { name: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(viewUrl)}`, contentKey: null },
@@ -88,11 +84,7 @@ export class GoogleFormsManager {
         try {
           console.log(`🔍 Trying ${proxy.name} proxy...`);
           const response = await fetch(proxy.url);
-
-          if (!response.ok) {
-            console.log(`❌ ${proxy.name} failed: HTTP ${response.status}`);
-            continue;
-          }
+          if (!response.ok) continue;
 
           if (proxy.contentKey) {
             const data = await response.json();
@@ -100,7 +92,6 @@ export class GoogleFormsManager {
           } else {
             html = await response.text();
           }
-
           if (html) {
             console.log(`✅ ${proxy.name} succeeded`);
             break;
@@ -111,59 +102,56 @@ export class GoogleFormsManager {
         }
       }
 
-      if (!html) {
-        throw new Error('No HTML content received from proxy');
-      }
+      if (!html) throw new Error('No HTML content received from proxy');
 
-      // Extract entry IDs with comprehensive patterns
+      // --- ★ タイトル抽出 ---
+      let title: string | undefined;
+      const titleTagMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+      if (titleTagMatch) {
+        title = titleTagMatch[1].replace(/ - Google フォーム$/, '').trim();
+      } else {
+        // fallback: ヘッダーの div から取得
+        const headerMatch = html.match(/freebirdFormviewerViewHeaderTitle[^>]*>(.*?)<\/div>/);
+        if (headerMatch) {
+          title = headerMatch[1].trim();
+        }
+      }
+      console.log('📋 Detected form title:', title);
+
+      // --- Entry ID 抽出処理（既存） ---
       const patterns = [
         /name="entry\.(\d+)"/g,
         /entry\.(\d+)/g,
         /"entry\.(\d+)"/g,
         /entry_(\d+)/g,
         /'entry\.(\d+)'/g,
-        /\[(\d{8,}),[^,]*?,null,.*?\[(\d{8,}),null,1\]/g
+        /\[(\d{8,}),[^,]*?,null,.*?\[(\d{8,}),null,1\]/g,
       ];
-
       const foundEntries = new Set<string>();
-
       patterns.forEach((pattern, index) => {
         const matches = Array.from(html.matchAll(pattern));
-        const entries = matches.map((match) => {
-          if (index === patterns.length - 1) {
-            return (match as RegExpMatchArray)[2];
-          }
-          return (match as RegExpMatchArray)[1];
-        }).filter(Boolean);
-
-        entries.forEach(entry => {
-          if (entry && entry.length >= 8) {
-            foundEntries.add(`entry.${entry}`);
-          }
+        const entries = matches.map((match) =>
+          index === patterns.length - 1 ? (match as RegExpMatchArray)[2] : (match as RegExpMatchArray)[1]
+        ).filter(Boolean);
+        entries.forEach((entry) => {
+          if (entry && entry.length >= 8) foundEntries.add(`entry.${entry}`);
         });
       });
 
       const uniqueEntries = Array.from(foundEntries);
       console.log('🎯 All found entry IDs:', uniqueEntries);
 
-      if (uniqueEntries.length === 0) {
-        throw new Error('No entry IDs found in HTML');
-      }
-
-      const userIdEntry = uniqueEntries[0];
+      if (uniqueEntries.length === 0) throw new Error('No entry IDs found in HTML');
 
       return {
-        userId: userIdEntry,
+        userId: uniqueEntries[0],
         message: uniqueEntries[1] || undefined,
-        success: true
+        title,
+        success: true,
       };
     } catch (fetchError: any) {
       console.log('❌ All detection methods failed:', fetchError);
-
-      return {
-        success: false,
-        error: 'Entry ID検出に失敗しました。手動検出をお試しください。'
-      };
+      return { success: false, error: 'Entry ID検出に失敗しました。手動検出をお試しください。' };
     }
   }
 

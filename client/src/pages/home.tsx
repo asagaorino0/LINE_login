@@ -27,6 +27,10 @@ export default function Home() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
+  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
+
+
+
 
   /** 1) URL パラメータ取得は1箇所に統合 */
   useEffect(() => {
@@ -158,6 +162,10 @@ export default function Home() {
     try {
       const result = await GoogleFormsManager.detectEntryIds(formUrl);
       if (result.success) {
+        console.log("📋 Googleフォームタイトル:", result.title);
+        if (result.title) {
+          setFormTitle(result.title); // ★ここで保存
+        }
         const detectionResult = {
           userId: result.userId!,
           message: result.message,
@@ -175,6 +183,13 @@ export default function Home() {
       setIsDetecting(false);
     }
   };
+  useEffect(() => {
+    if (formTitle) {
+      document.title = formTitle;  // head の <title> を変更
+    }
+  }, [formTitle]);
+
+
 
   /** プリフィルURL生成（C: entry ID フォールバックを必ず入れる） */
   const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
@@ -343,7 +358,7 @@ export default function Home() {
                         <span>メッセージ送信中...</span>
                       </div>
                     ) : ( */}
-                <p className="text-lg font-semibold">自動でフォームにアクセスしない時はここをクリック</p>
+                <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
                 {/*  )} */}
               </div>
               {/* </CardContent>
