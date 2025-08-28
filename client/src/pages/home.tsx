@@ -24,17 +24,20 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
   const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
 
-  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null); // プリフィルURL（実際に開く）
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null); // プリフィルURL
   const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
   const [formDescription, setFormDescription] = useState<string>("リンクを開くにはこちらをタップ");
 
   const { toast, showToast, hideToast } = useToastNotification();
+
+  // ref 制御
   const autoTriggeredRef = useRef(false);
+  const messageSentRef = useRef(false);
+  const redirectedRef = useRef(false);
 
   // ---------- URLパラメータ（?form=...） ----------
   useEffect(() => {
@@ -45,7 +48,12 @@ export default function Home() {
         const decoded = decodeURIComponent(formParam);
         setFormUrl(decoded);
         setIsAutoMode(true);
+
+        // 新しいリンクを踏んだときはフラグをリセット
         autoTriggeredRef.current = false;
+        messageSentRef.current = false;
+        redirectedRef.current = false;
+
         console.log("[auto] activated with form:", decoded);
       } catch (e) {
         console.error("Failed to parse URL parameters:", e);
@@ -81,7 +89,7 @@ export default function Home() {
     if (formTitle) document.title = formTitle;
   }, [formTitle]);
 
-  // ---------- プリフィルURL生成（ログイン＆URL揃ったら） ----------
+  // ---------- プリフィルURL生成 ----------
   useEffect(() => {
     const run = async () => {
       if (userProfile && formUrl && isAutoMode) {
@@ -101,16 +109,14 @@ export default function Home() {
       }
     };
     void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId]);
 
   // ---------- 自動遷移（1回だけ） ----------
   useEffect(() => {
     if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
       autoTriggeredRef.current = true;
-      void sendLineMessageAndOpenForm();
+      void sendLineMessageAndOpenForm({ manual: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
 
   // ---------- helpers ----------
@@ -150,7 +156,7 @@ export default function Home() {
     }
   };
 
-  // ---------- Google Forms 解析（entry ID / title / desc） ----------
+  // ---------- Google Forms 解析 ----------
   const handleDetectEntries = async () => {
     if (!formUrl.trim()) {
       showToast("フォームURLを先に入力してください", "error");
@@ -161,7 +167,6 @@ export default function Home() {
     setLastDetectionResult(null);
 
     try {
-      // 重要：API向けに正規化
       const normalized = (GoogleFormsManager as any).normalizeFormUrl
         ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
         : formUrl;
@@ -190,52 +195,40 @@ export default function Home() {
     }
   };
 
-  // ---------- プリフィルURL（=実際に開くURL） ----------
+  // ---------- プリフィルURL生成 ----------
   const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
     try {
       const baseUrl = originalUrl.split("?")[0];
-
-      // 最優先：直近の検出結果（同じフォームURL）
       let userIdEntry =
         lastDetectionResult?.formUrl === originalUrl
           ? lastDetectionResult.userId
           : detectedEntries?.userId;
 
-      // 最終チャレンジ（自動検出）
       if (!userIdEntry) {
         try {
           const detection = await GoogleFormsManager.detectEntryIds(originalUrl);
           if (detection.success && detection.userId) {
             userIdEntry = detection.userId;
-            setLastDetectionResult({
-              userId: detection.userId,
-              message: detection.message,
-              formUrl: originalUrl,
-            });
+            setLastDetectionResult({ userId: detection.userId, message: detection.message, formUrl: originalUrl });
             setDetectedEntries({ userId: detection.userId, message: detection.message });
             if (detection.title) setFormTitle(detection.title);
             if (detection.description) setFormDescription(detection.description);
           }
-        } catch {
-          // noop
-        }
+        } catch { }
       }
 
-      // フォールバック
       userIdEntry = userIdEntry ?? "entry.1795297917";
-
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
       if (detectedEntries?.message) {
         return `${prefillUrl}&${detectedEntries.message}=`;
       }
       return prefillUrl;
-    } catch (e) {
-      console.error("Failed to generate prefill URL:", e);
+    } catch {
       return originalUrl;
     }
   };
 
-  // ---------- 共有用URL（プレビュー） / 遷移用URL（アプリ） ----------
+  // ---------- プレビューURL ----------
   const viewUrlNormalized = useMemo(() => {
     try {
       return (GoogleFormsManager as any).normalizeFormUrl
@@ -246,50 +239,48 @@ export default function Home() {
     }
   }, [formUrl]);
 
-  // ユーザーが踏む実リンク（アプリ → 自動でフォームへ）
   const appUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
     return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
   }, [viewUrlNormalized]);
 
-  // LINEに貼る用：OG を差し替えるサーバー経由リンク
   const previewUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
     const params = new URLSearchParams({
-      form: viewUrlNormalized,       // ← viewform を入れる
+      form: viewUrlNormalized,
       title: formTitle || "",
       desc: formDescription || "リンクを開くにはこちらをタップ",
-      v: String(Date.now()),         // ← キャッシュバスター（超重要）
+      v: String(Date.now()),
     });
     return `${window.location.origin}/api/link-preview?${params.toString()}`;
   }, [viewUrlNormalized, formTitle, formDescription]);
 
   // ---------- LINE送信 + 遷移 ----------
-  const sendLineMessageAndOpenForm = async () => {
+  const sendLineMessageAndOpenForm = async ({ manual = false }: { manual?: boolean }) => {
     if (!userProfile || !generatedUrl) return;
-    setIsSendingMessage(true);
 
-    // 送信は待たずに（失敗しても遷移はする）
-    apiRequest("POST", "/api/line/send-message", {
-      userId: userProfile.userId,
-      type: "card",
-      formUrl: generatedUrl,
-      title: formTitle || "Googleフォーム回答通知",
-      description: formDescription || "リンクを開くにはこちらをタップ",
-    }).catch((e) => {
-      console.warn("send-message failed (ignored):", e);
-    });
-
-    // 遷移（端末別）
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-      window.location.href = generatedUrl;
-    } else {
-      window.open(generatedUrl, "_blank");
+    // メッセージ送信：1回だけ
+    if (!messageSentRef.current) {
+      messageSentRef.current = true;
+      apiRequest("POST", "/api/line/send-message", {
+        userId: userProfile.userId,
+        type: "card",
+        formUrl: generatedUrl,
+        title: formTitle || "Googleフォーム回答通知",
+        description: formDescription || "リンクを開くにはこちらをタップ",
+      }).catch((e) => console.warn("send-message failed:", e));
     }
 
-    console.log("open:", generatedUrl, "entries:", detectedEntries, "uid:", userProfile.userId);
-    setIsSendingMessage(false);
+    // 遷移：1回だけ
+    if (!redirectedRef.current) {
+      redirectedRef.current = true;
+      const go = () => window.location.replace(generatedUrl!);
+      if (manual) {
+        go();
+      } else {
+        setTimeout(go, 60); // iOS LINE 対策
+      }
+    }
   };
 
   const handleRetry = () => {
@@ -315,9 +306,7 @@ export default function Home() {
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <h1 className="text-lg font-semibold text-gray-900">Googleフォーム-LINE連携システム</h1>
-            </div>
+            <h1 className="text-lg font-semibold text-gray-900">Googleフォーム-LINE連携システム</h1>
             <div className="text-sm text-gray-500">v1.0</div>
           </div>
         </div>
@@ -349,30 +338,19 @@ export default function Home() {
         {/* 自動モード：ログイン済み → フォームアクセス */}
         {isLoggedIn && userProfile && formUrl && isAutoMode && (
           isGeneratingUrl ? (
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <h3 className="text-base font-semibold">
-                    <span className="text-blue-600">URLを生成中...</span>
-                  </h3>
-                </div>
-              </CardContent>
-            </Card>
+            <Card className="mb-6"><CardContent className="pt-6 text-center">URLを生成中...</CardContent></Card>
           ) : (
             <button
-              onClick={sendLineMessageAndOpenForm}
-              disabled={isSendingMessage || !generatedUrl}
+              onClick={() => sendLineMessageAndOpenForm({ manual: true })}
+              disabled={!generatedUrl}
               className="w-full p-0 h-auto"
-              data-testid="button-access-form"
             >
-              <div className="text-center text-blue">
-                <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
-              </div>
+              <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
             </button>
           )
         )}
 
-        {/* 通常（管理者モード） */}
+        {/* 管理者モード */}
         {!isAutoMode && (
           <>
             <Card className="mb-6">
@@ -501,38 +479,11 @@ export default function Home() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="max-w-md mx-auto px-4 py-6 text-center">
-        <div className="text-xs text-gray-500 space-y-2">
-          <p>© 2024 LINE UID Collection System</p>
-          <div className="flex items-center justify-center space-x-4">
-            <a
-              href="https://github.com/asagaorino0/LINE_login.git"
-              className="hover:text-line-green transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Github className="w-3 h-3 mr-1 inline" />
-              GitHub
-            </a>
-            <a href="#" className="hover:text-line-green transition-colors">
-              <Shield className="w-3 h-3 mr-1 inline" />
-              プライバシー
-            </a>
-            <a href="#" className="hover:text-line-green transition-colors">
-              <HelpCircle className="w-3 h-3 mr-1 inline" />
-              サポート
-            </a>
-          </div>
-        </div>
+      <footer className="max-w-md mx-auto px-4 py-6 text-center text-xs text-gray-500">
+        © 2024 LINE UID Collection System
       </footer>
 
-      <ToastNotification
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={hideToast}
-      />
+      <ToastNotification message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={hideToast} />
     </div>
   );
 }
