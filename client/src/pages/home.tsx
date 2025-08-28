@@ -27,7 +27,7 @@ export default function Home() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
-  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
+  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_GoogleフォームWWW");
 
 
 
