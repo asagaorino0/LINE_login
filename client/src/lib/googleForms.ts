@@ -62,30 +62,24 @@ export class GoogleFormsManager {
   // Add detection method (copied from client/src/lib/googleForms.ts)
   public static async detectEntryIds(
     formUrl: string
-  ): Promise<{ userId?: string; message?: string; success: boolean; error?: string; title?: string }> {
+  ): Promise<{ userId?: string; message?: string; success: boolean; error?: string; title?: string, description?: string }> {
     try {
       console.log('Attempting to detect entry IDs for form:', formUrl);
-
       const formId = this.extractFormId(formUrl);
       if (!formId) throw new Error('Could not extract form ID');
-
       const viewUrl = this.buildViewUrl(formUrl, formId);
       console.log('🔗 Built view URL:', viewUrl);
-
       let html: string | null = null;
-
       const proxyServices = [
         { name: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(viewUrl)}`, contentKey: 'contents' },
         { name: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(viewUrl)}`, contentKey: null },
         { name: 'thingproxy', url: `https://thingproxy.freeboard.io/fetch/${viewUrl}`, contentKey: null }
       ];
-
       for (const proxy of proxyServices) {
         try {
           console.log(`🔍 Trying ${proxy.name} proxy...`);
           const response = await fetch(proxy.url);
           if (!response.ok) continue;
-
           if (proxy.contentKey) {
             const data = await response.json();
             html = data[proxy.contentKey];
@@ -101,9 +95,7 @@ export class GoogleFormsManager {
           continue;
         }
       }
-
       if (!html) throw new Error('No HTML content received from proxy');
-
       // --- ★ タイトル抽出 ---
       let title: string | undefined;
       const titleTagMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
@@ -117,7 +109,15 @@ export class GoogleFormsManager {
         }
       }
       console.log('📋 Detected form title:', title);
-
+      // --- ★ description抽出 ---
+      let description: string | undefined;
+      const descriptionTagMatch = html.match(/<meta[^>]+itemprop=["']description["'][^>]+content=["']([^"']+)["']/i);
+      if (descriptionTagMatch) {
+        description = descriptionTagMatch[1].trim();
+      } else {
+        description = 'リンクを開くにはこちらをタップWWW';
+      }
+      console.log('📋 Detected form title:', title, description);
       // --- Entry ID 抽出処理（既存） ---
       const patterns = [
         /name="entry\.(\d+)"/g,
@@ -147,6 +147,7 @@ export class GoogleFormsManager {
         userId: uniqueEntries[0],
         message: uniqueEntries[1] || undefined,
         title,
+        description,
         success: true,
       };
     } catch (fetchError: any) {
@@ -173,35 +174,30 @@ export class GoogleFormsManager {
     }
   }
 
+  // googleForms.ts
   private static extractFormId(url: string): string | null {
     try {
-      console.log('🔧 Extracting form ID from URL:', url);
+      console.log('🔧 Extracting form ID from URL (raw):', url);
+      url = this.normalizeFormUrl(url); // ★ 正規化を先に実施
+      console.log('🔧 Normalized URL:', url);
 
-      // Handle both short (forms.gle) and long Google Forms URLs
+      // もっとも堅い：トークンそのものを拾う
+      const tokenMatch = url.match(/(1FAIpQL[0-9A-Za-z_-]+)/);
+      if (tokenMatch) {
+        console.log('✅ Detected token:', tokenMatch[1]);
+        return tokenMatch[1];
+      }
+      // フォールバック（念のため残す）
       const shortFormMatch = url.match(/forms\.gle\/([a-zA-Z0-9_-]+)/);
-      if (shortFormMatch) {
-        console.log('✅ Short form match found:', shortFormMatch[1]);
-        return shortFormMatch[1];
-      }
-
-      // Handle /d/e/ format URLs (e.g., /d/e/1FAIpQL...)
-      const longFormWithEMatch = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
-      if (longFormWithEMatch) {
-        console.log('✅ Long form with /e/ match found:', longFormWithEMatch[1]);
-        return longFormWithEMatch[1];
-      }
-
-      // Handle /d/ format URLs (e.g., /d/1FAIpQL...)
-      const longFormMatch = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
-      if (longFormMatch) {
-        console.log('✅ Long form match found:', longFormMatch[1]);
-        return longFormMatch[1];
-      }
-
+      if (shortFormMatch) return shortFormMatch[1];
+      const longE = url.match(/docs\.google\.com\/forms\/d\/e\/([a-zA-Z0-9_-]+)/);
+      if (longE) return longE[1];
+      const long = url.match(/docs\.google\.com\/forms\/d\/([a-zA-Z0-9_-]+)/);
+      if (long) return long[1];
       console.log('❌ No form ID pattern matched');
       return null;
-    } catch (error) {
-      console.error('Failed to extract form ID:', error);
+    } catch (e) {
+      console.error('Failed to extract form ID:', e);
       return null;
     }
   }
@@ -209,5 +205,40 @@ export class GoogleFormsManager {
   static validateFormUrl(url: string): boolean {
     const formId = this.extractFormId(url);
     return formId !== null;
+  }
+
+
+  // googleForms.ts （GoogleFormsManager 内に追加）
+  private static normalizeFormUrl(url: string): string {
+    if (!url) return url;
+
+    // 1) 余計なエンコードや空白を除去
+    try { url = decodeURIComponent(url); } catch { }
+    url = url.trim();
+
+    // 2) 1FAIpQL... のトークンを最初の1つだけ抽出（壊れたURL対策）
+    const tokenMatch = url.match(/(1FAIpQL[0-9A-Za-z_-]+)/);
+    if (tokenMatch) {
+      const token = tokenMatch[1];
+      // /d/e/ と /d/ に対応し、常に "viewform" に正規化
+      if (url.includes('/forms/d/e/')) {
+        return `https://docs.google.com/forms/d/e/${token}/viewform`;
+      }
+      if (url.includes('/forms/d/')) {
+        return `https://docs.google.com/forms/d/${token}/viewform`;
+      }
+      // それ以外（短縮URLなど）はトークンから /d/e/ に組み立て
+      return `https://docs.google.com/forms/d/e/${token}/viewform`;
+    }
+
+    // 3) 短縮URL（forms.gle/...）はそのまま返す（解決はブラウザ側/後段に委ねる）
+    if (/https?:\/\/forms\.gle\//.test(url)) return url;
+
+    // 4) 既に viewform を含む正常URLならクエリを落として返す
+    if (/https?:\/\/docs\.google\.com\/forms\/d\/(e\/)?[A-Za-z0-9_-]+\/viewform/.test(url)) {
+      return url.split('?')[0];
+    }
+
+    return url; // 最後の手段（この後 extractFormId で弾かれます）
   }
 }

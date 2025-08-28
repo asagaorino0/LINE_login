@@ -27,7 +27,8 @@ export default function Home() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
-  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_GoogleフォームWWW");
+  const [formTitle, setFormTitle] = useState<string>("公式LINE連携_Googleフォーム");
+  const [formDescription, setFormDescription] = useState<string>("");
 
 
 
@@ -165,6 +166,9 @@ export default function Home() {
         console.log("📋 Googleフォームタイトル:", result.title);
         if (result.title) {
           setFormTitle(result.title); // ★ここで保存
+        }
+        if (result.description) {
+          setFormDescription(result.description); // ★ここで保存
         }
         const detectionResult = {
           userId: result.userId!,
@@ -440,9 +444,19 @@ export default function Home() {
                       </div>
                       <Button
                         onClick={() => {
-                          const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
-                          navigator.clipboard.writeText(userLink);
-                          showToast("リンクをコピーしました", "success");
+                          const shareUrl = `${window.location.origin}/api/link-preview?` + new URLSearchParams({
+                            form: formUrl,                      // 実際の GoogleフォームURL
+                            desc: formDescription, // 好きな説明文（任意）
+                            // title: formTitle,                // 強制上書きしたいときだけ
+                            // image: 'https://.../og.png',     // 共有プレビュー画像を変えたいときだけ
+                          }).toString();
+                          navigator.clipboard.writeText(shareUrl);
+                          console.log(shareUrl)
+                          showToast('共有リンクをコピーしました', 'success');
+
+                          // const userLink = `${window.location.origin}/?form=${encodeURIComponent(formUrl)}&redirect=true`;
+                          // navigator.clipboard.writeText(userLink);
+                          // showToast("リンクをコピーしました", "success");
                         }}
                         variant={detectedEntries ? "default" : "outline"}
                         size="sm"
