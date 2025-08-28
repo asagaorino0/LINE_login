@@ -256,10 +256,10 @@ export default function Home() {
   const previewUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
     const params = new URLSearchParams({
-      form: viewUrlNormalized,
+      form: viewUrlNormalized,       // ← viewform を入れる
       title: formTitle || "",
       desc: formDescription || "リンクを開くにはこちらをタップ",
-      v: String(Date.now()), // キャッシュ回避（テスト時）
+      v: String(Date.now()),         // ← キャッシュバスター（超重要）
     });
     return `${window.location.origin}/api/link-preview?${params.toString()}`;
   }, [viewUrlNormalized, formTitle, formDescription]);
@@ -431,11 +431,15 @@ export default function Home() {
                       </div>
 
                       <Button
-                        onClick={() => {
+                        onClick={async () => {              // ← async にする
                           if (!formUrl) return;
-                          const link = previewUrl || appUrl; // プレビュー置換リンクを優先
-                          navigator.clipboard.writeText(link);
-                          showToast("リンクをコピーしました", "success");
+                          const url = previewUrl || appUrl; // プレビュー差し替えURLを優先
+                          try {
+                            await navigator.clipboard.writeText(url); // 1回だけコピー
+                            showToast("リンクをコピーしました", "success");
+                          } catch {
+                            showToast("コピーに失敗しました", "error");
+                          }
                         }}
                         variant={detectedEntries ? "default" : "outline"}
                         size="sm"
@@ -444,6 +448,7 @@ export default function Home() {
                         <Copy className="w-3 h-3 mr-1" />
                         リンクをコピー（LINE用プレビュー）
                       </Button>
+
                     </div>
                   </div>
                 ) : (
