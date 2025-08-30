@@ -254,10 +254,27 @@ export default function Home() {
   }, [formUrl]);
 
   // ユーザーが踏む実リンク（このアプリ → 自動でフォームへ）
+  // const appUrl = useMemo(() => {
+  //   if (!viewUrlNormalized) return "";
+  //   return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
+  // }, [viewUrlNormalized]);
+
+  // // LINEに貼る用：OG差し替えサーバー経由リンク
+  // const previewUrl = useMemo(() => {
+  //   if (!viewUrlNormalized) return "";
+  //   const params = new URLSearchParams({
+  //     form: viewUrlNormalized,
+  //     title: formTitle || "",
+  //     desc: formDescription || "リンクを開くにはこちらをタップ",
+  //     v: String(Date.now()),
+  //   });
+  //   return `${window.location.origin}/api/link-preview?${params.toString()}`;
+  // }, [viewUrlNormalized, formTitle, formDescription]);
   const appUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
-    return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
-  }, [viewUrlNormalized]);
+    const notify = notifyEnabled ? "1" : "0";
+    return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true&notify=${notify}`;
+  }, [viewUrlNormalized, notifyEnabled]);
 
   // LINEに貼る用：OG差し替えサーバー経由リンク
   const previewUrl = useMemo(() => {
@@ -266,10 +283,11 @@ export default function Home() {
       form: viewUrlNormalized,
       title: formTitle || "",
       desc: formDescription || "リンクを開くにはこちらをタップ",
-      v: String(Date.now()),
+      notify: notifyEnabled ? "1" : "0",
+      v: String(Date.now()), // キャッシュバスター
     });
     return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  }, [viewUrlNormalized, formTitle, formDescription]);
+  }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   // ---------- LINE送信 + 遷移 ----------
   const sendLineMessageAndOpenForm = async ({ manual = false }: { manual?: boolean }) => {
@@ -286,7 +304,6 @@ export default function Home() {
         description: formDescription || "リンクを開くにはこちらをタップ",
       }).catch((e) => console.warn("send-message failed:", e));
     }
-
     // 遷移：1回だけ
     if (!redirectedRef.current) {
       redirectedRef.current = true;
@@ -299,10 +316,10 @@ export default function Home() {
     }
   };
 
-  const handleRetry = () => {
-    setError(null);
-    if (!isLoggedIn) handleLineLogin();
-  };
+  // const handleRetry = () => {
+  //   setError(null);
+  //   if (!isLoggedIn) handleLineLogin();
+  // };
 
   // ---------- UI ----------
   if (!isInitialized) {
@@ -366,6 +383,7 @@ export default function Home() {
           ) : (
             <button
               onClick={() => sendLineMessageAndOpenForm({ manual: true })}
+              // onClick={sendLineMessageAndOpenForm}
               disabled={!generatedUrl}
               className="w-full p-0 h-auto"
             >
@@ -398,6 +416,19 @@ export default function Home() {
                           placeholder="GoogleフォームのURLを入力"
                           className="pr-5 text-gray-600 text-sm"
                         />
+                      </div>
+
+                      <div className="mt-3 flex items-center space-x-2">
+                        <input
+                          id="notify"
+                          type="checkbox"
+                          checked={notifyEnabled}
+                          onChange={(e) => setNotifyEnabled(e.target.checked)}
+                          className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                        />
+                        <label htmlFor="notify" className="text-sm text-gray-700">
+                          回答通知をLINEに送信する
+                        </label>
                       </div>
 
                       <Button
@@ -503,11 +534,38 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="max-w-md mx-auto px-4 py-6 text-center text-xs text-gray-500">
-        © 2024 LINE UID Collection System
+      {/* Footer */}
+      <footer className="max-w-md mx-auto px-4 py-6 text-center">
+        <div className="text-xs text-gray-500 space-y-2">
+          <p>© 2024 LINE UID Collection System</p>
+          <div className="flex items-center justify-center space-x-4">
+            <a
+              href="https://github.com/asagaorino0/LINE_login.git"
+              className="hover:text-line-green transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Github className="w-3 h-3 mr-1 inline" />
+              GitHub
+            </a>
+            <a href="#" className="hover:text-line-green transition-colors">
+              <Shield className="w-3 h-3 mr-1 inline" />
+              プライバシー
+            </a>
+            <a href="#" className="hover:text-line-green transition-colors">
+              <HelpCircle className="w-3 h-3 mr-1 inline" />
+              サポート
+            </a>
+          </div>
+        </div>
       </footer>
 
-      <ToastNotification message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={hideToast} />
+      <ToastNotification
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+      />
     </div>
   );
 }
