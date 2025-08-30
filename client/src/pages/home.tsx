@@ -37,8 +37,8 @@ export default function Home() {
 
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
-  const messageSentRef = useRef(false);
-  const redirectedRef = useRef(false);
+  // const messageSentRef = useRef(false);
+  // const redirectedRef = useRef(false);
 
   // ---------- URLパラメータ（?form=...） ----------
   useEffect(() => {
@@ -52,8 +52,8 @@ export default function Home() {
         setFormUrl(decoded);
         setIsAutoMode(true);
         autoTriggeredRef.current = false;
-        messageSentRef.current = false;
-        redirectedRef.current = false;
+        // messageSentRef.current = false;
+        // redirectedRef.current = false;
 
         console.log("[auto] activated with form:", decoded);
       } catch (e) {
@@ -121,7 +121,8 @@ export default function Home() {
   useEffect(() => {
     if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
       autoTriggeredRef.current = true;
-      void sendLineMessageAndOpenForm({ manual: false });
+      void sendLineMessageAndOpenForm();
+      // void sendLineMessageAndOpenForm({ manual: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
@@ -254,22 +255,6 @@ export default function Home() {
   }, [formUrl]);
 
   // ユーザーが踏む実リンク（このアプリ → 自動でフォームへ）
-  // const appUrl = useMemo(() => {
-  //   if (!viewUrlNormalized) return "";
-  //   return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true`;
-  // }, [viewUrlNormalized]);
-
-  // // LINEに貼る用：OG差し替えサーバー経由リンク
-  // const previewUrl = useMemo(() => {
-  //   if (!viewUrlNormalized) return "";
-  //   const params = new URLSearchParams({
-  //     form: viewUrlNormalized,
-  //     title: formTitle || "",
-  //     desc: formDescription || "リンクを開くにはこちらをタップ",
-  //     v: String(Date.now()),
-  //   });
-  //   return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  // }, [viewUrlNormalized, formTitle, formDescription]);
   const appUrl = useMemo(() => {
     if (!viewUrlNormalized) return "";
     const notify = notifyEnabled ? "1" : "0";
@@ -290,30 +275,53 @@ export default function Home() {
   }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   // ---------- LINE送信 + 遷移 ----------
-  const sendLineMessageAndOpenForm = async ({ manual = false }: { manual?: boolean }) => {
-    if (!userProfile || !generatedUrl) return;
+  // const sendLineMessageAndOpenForm = async ({ manual = false }: { manual?: boolean }) => {
+  //   if (!userProfile || !generatedUrl) return;
 
-    // メッセージ送信：1回だけ
-    if (!messageSentRef.current) {
-      messageSentRef.current = true;
+  //   // メッセージ送信：1回だけ
+  //   if (!messageSentRef.current) {
+  //     messageSentRef.current = true;
+  //     apiRequest("POST", "/api/line/send-message", {
+  //       userId: userProfile.userId,
+  //       type: "card",
+  //       formUrl: generatedUrl,
+  //       title: formTitle || "Googleフォーム回答通知",
+  //       description: formDescription || "リンクを開くにはこちらをタップ",
+  //     }).catch((e) => console.warn("send-message failed:", e));
+  //   }
+  //   // 遷移：1回だけ
+  //   if (!redirectedRef.current) {
+  //     redirectedRef.current = true;
+  //     const go = () => window.location.replace(generatedUrl!);
+  //     if (manual) {
+  //       go();
+  //     } else {
+  //       setTimeout(go, 60); // iOS LINE 対策
+  //     }
+  //   }
+  // };
+  const sendLineMessageAndOpenForm = async () => {
+    if (!userProfile || !generatedUrl) return;
+    setIsSendingMessage(true);
+
+    // 通知スイッチで送信を制御（★二重送信の原因を遮断）
+    if (notifyEnabled) {
       apiRequest("POST", "/api/line/send-message", {
         userId: userProfile.userId,
         type: "card",
         formUrl: generatedUrl,
         title: formTitle || "Googleフォーム回答通知",
         description: formDescription || "リンクを開くにはこちらをタップ",
-      }).catch((e) => console.warn("send-message failed:", e));
+      }).catch((e) => console.warn("send-message failed (ignored):", e));
     }
-    // 遷移：1回だけ
-    if (!redirectedRef.current) {
-      redirectedRef.current = true;
-      const go = () => window.location.replace(generatedUrl!);
-      if (manual) {
-        go();
-      } else {
-        setTimeout(go, 60); // iOS LINE 対策
-      }
+
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      window.location.href = generatedUrl;
+    } else {
+      window.open(generatedUrl, "_blank");
     }
+    setIsSendingMessage(false);
   };
 
   // const handleRetry = () => {
@@ -382,17 +390,19 @@ export default function Home() {
             // </Card>
           ) : (
             <button
-              onClick={() => sendLineMessageAndOpenForm({ manual: true })}
-              // onClick={sendLineMessageAndOpenForm}
-              disabled={!generatedUrl}
+              onClick={sendLineMessageAndOpenForm}
+              disabled={isSendingMessage || !generatedUrl}
               className="w-full p-0 h-auto"
+              data-testid="button-access-form"
             >
-              <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
+              <div className="text-center text-blue">
+                <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
+              </div>
             </button>
           )
         )}
 
-        {/* 管理者モード */}
+        {/* 通常（管理者モード） */}
         {!isAutoMode && (
           <>
             <Card className="mb-6">
