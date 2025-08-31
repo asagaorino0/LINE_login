@@ -1,18 +1,27 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { storage } from '@/server/storage';
+// app/api/form-submissions/[lineUserId]/route.ts
+import { NextResponse } from 'next/server';
+export const runtime = 'nodejs';
+
+type Params = { lineUserId: string };
 
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { lineUserId: string } }
+  _req: Request,
+  { params }: { params: Params }  // ← 第2引数は { params: ... } の形にする
 ) {
-  try {
-    const { lineUserId } = params;
-    const submissions = await storage.getFormSubmissionsByLineUserId(lineUserId);
-    return NextResponse.json(submissions);
-  } catch (error) {
-    return NextResponse.json(
-      { message: "Failed to retrieve form submissions" },
-      { status: 500 }
-    );
-  }
+  const { lineUserId } = params;
+
+  // ここでDB読むなどの処理
+  // const data = await getSomething(lineUserId);
+
+  return NextResponse.json({ ok: true, lineUserId });
+}
+
+// （必要なら）POSTも同様に
+export async function POST(
+  req: Request,
+  { params }: { params: Params }
+) {
+  const body = await req.json();
+  // 保存処理など
+  return NextResponse.json({ ok: true, received: body, params });
 }
