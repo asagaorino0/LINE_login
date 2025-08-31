@@ -27,22 +27,25 @@
 // }
 
 // app/api/form-submissions/[lineUserId]/route.ts
-import { NextResponse } from 'next/server';
-export const runtime = 'nodejs';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(
-  _req: Request,
-  { params }: { params: { lineUserId: string } } // ← インライン型で！
+  req: NextRequest,
+  context: { params: { lineUserId: string } }
 ) {
-  const { lineUserId } = params;
+  const { lineUserId } = context.params;
   return NextResponse.json({ ok: true, lineUserId });
 }
 
+
 export async function POST(
-  req: Request,
-  { params }: { params: { lineUserId: string } }
+  req: NextRequest,
+  context: { params: { lineUserId: string } }
 ) {
   const body = await req.json();
-  // ここで保存など
-  return NextResponse.json({ ok: true, lineUserId: params.lineUserId, body });
+  return NextResponse.json({
+    ok: true,
+    lineUserId: context.params.lineUserId,
+    body
+  });
 }
