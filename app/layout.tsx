@@ -5,18 +5,18 @@ import { QueryProvider } from '@/components/providers/query-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/toaster'
 
-const inter = Inter({ 
+const inter = Inter({
   subsets: ['latin'],
   variable: '--font-inter'
 })
 
-const notoSansJP = Noto_Sans_JP({ 
+const notoSansJP = Noto_Sans_JP({
   subsets: ['latin'],
   variable: '--font-noto'
 })
 
 export const metadata: Metadata = {
-  title: 'LINE UID取得システム',
+  title: '公式LINE連携_Googleフォーム',
   description: 'LINEログインでユーザーIDを取得し、Googleフォームに送信するWebアプリケーション',
   keywords: ['LINE', 'LIFF', 'Google Forms', 'ユーザーID'],
 }

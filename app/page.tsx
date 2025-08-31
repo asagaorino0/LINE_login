@@ -1,83 +1,171 @@
 'use client';
 
-import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { Copy, ExternalLink, Github, Shield, HelpCircle, RefreshCw } from "lucide-react";
-import { liffManager, type LiffProfile } from "@/lib/liff";
-import { GoogleFormsManager } from "@/lib/googleForms";
-import { ToastNotification, useToastNotification } from "@/components/ui/toast-notification";
-import { cn } from "@/lib/utils";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Card, CardContent } from '../components/ui/card';
+import { Github, Shield, HelpCircle, Copy, Settings } from 'lucide-react';
+import { ToastNotification, useToastNotification } from '../components/ui/toast-notification';
+
+// B) 相対パスで app 配下を指す
+// import { liffManager, type LiffProfile } from './lib/liff';
+import { apiRequest } from './lib/queryClient';
+import { GoogleFormsManager } from './lib/googleForms';
+import { liffManager, LiffProfile } from '@/lib/liff';
 
 export default function Home() {
+  // ---- state -------------------------------------------------------------
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
-  const [formUrl, setFormUrl] = useState("https://forms.gle/example123");
-  const [additionalMessage, setAdditionalMessage] = useState("");
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [submissionTime, setSubmissionTime] = useState<Date | null>(null);
+
+  const [formUrl, setFormUrl] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
+  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
+
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
+  const [formDescription, setFormDescription] = useState('リンクを開くにはこちらをタップ');
+  const [notifyEnabled, setNotifyEnabled] = useState(true);
 
   const { toast, showToast, hideToast } = useToastNotification();
-  const queryClient = useQueryClient();
+  const autoTriggeredRef = useRef(false);
+  const messageSentRef = useRef(false);
+  const navigatedRef = useRef(false);
 
-  // Initialize LIFF on component mount
+  // ---- params ------------------------------------------------------------
   useEffect(() => {
-    const initLiff = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const formParam = params.get('form');
+    const notifyParam = params.get('notify');
+
+    if (formParam) {
+      try {
+        const decoded = decodeURIComponent(formParam);
+        setFormUrl(decoded);
+        setIsAutoMode(true);
+        // 自動発火フラグをリセット
+        autoTriggeredRef.current = false;
+        messageSentRef.current = false;
+        navigatedRef.current = false;
+        console.log('[auto] activated with form:', decoded);
+      } catch (e) {
+        console.error('Failed to parse URL parameters:', e);
+      }
+    }
+    if (notifyParam === '0') setNotifyEnabled(false);
+    if (notifyParam === '1') setNotifyEnabled(true);
+  }, []);
+
+  // ---- LIFF init ---------------------------------------------------------
+  useEffect(() => {
+    (async () => {
       try {
         await liffManager.init();
         setIsInitialized(true);
-
-        // Check if already logged in
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
             setUserProfile(profile);
             setIsLoggedIn(true);
-
-            // Save user to backend
             await saveUserToBackend(profile);
           }
         }
-      } catch (error) {
-        console.error('LIFF initialization failed:', error);
+      } catch (e) {
+        console.error('LIFF initialization failed:', e);
         setError('LIFF初期化に失敗しました。ページをリロードしてください。');
       }
-    };
-
-    initLiff();
+    })();
   }, []);
 
+  // ---- document title ----------------------------------------------------
+  useEffect(() => {
+    if (formTitle) document.title = formTitle;
+  }, [formTitle]);
+
+  // ---- prefill URL generation -------------------------------------------
+  useEffect(() => {
+    (async () => {
+      if (userProfile && formUrl && isAutoMode) {
+        setIsGeneratingUrl(true);
+        try {
+          const url = await generatePrefillUrl(formUrl, userProfile.userId);
+          setGeneratedUrl(url);
+        } catch (e) {
+          console.error('URL generation failed:', e);
+          setGeneratedUrl(null);
+        } finally {
+          setIsGeneratingUrl(false);
+        }
+      } else {
+        setGeneratedUrl(null);
+        setIsGeneratingUrl(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId]);
+
+  // ---- auto open once ----------------------------------------------------
+  useEffect(() => {
+    if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
+      autoTriggeredRef.current = true;
+      void sendLineMessageAndOpenForm(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
+
+  // ---- helpers -----------------------------------------------------------
   const saveUserToBackend = async (profile: LiffProfile) => {
     try {
-      const response = await fetch('/api/line-users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          lineUserId: profile.userId,
-          displayName: profile.displayName,
-          pictureUrl: profile.pictureUrl || null,
-        }),
+      await apiRequest('POST', '/api/line-users', {
+        lineUserId: profile.userId,
+        displayName: profile.displayName,
+        pictureUrl: profile.pictureUrl || null,
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to save user');
-      }
-    } catch (error) {
-      console.error('Failed to save user to backend:', error);
+    } catch (e) {
+      console.error('Failed to save user to backend:', e);
     }
   };
 
-  // LINE login mutation
-  const loginMutation = useMutation({
+  // ✅ 修正：login() は未ログイン時はリダイレクトで終わるので、戻り値を期待しない
+  // const loginMutation = useMutation({
+  //   mutationFn: async () => {
+  //     await liffManager.login();               // 未ログインならここでリダイレクトして処理終了
+  //     const profile = await liffManager.getProfile(); // ログイン“済み”の場合のみ続行
+  //     await saveUserToBackend(profile);
+  //     return profile;
+  //   },
+  //   onSuccess: (profile) => {
+  //     setUserProfile(profile);
+  //     setIsLoggedIn(true);
+  //     setError(null);
+  //   },
+  //   onError: (e: Error) => {
+  //     console.error('Login failed:', e);
+  //     setError('ログインに失敗しました。もう一度お試しください。');
+  //   },
+  // });
+
+  const handleLineLogin = () => {
+    if (!loginMutation.isPending) {
+      setError(null);
+      loginMutation.mutate();
+    }
+  };
+  const loginMutation = useMutation<LiffProfile, Error>({
     mutationFn: async () => {
-      const profile = await liffManager.login();
+      await liffManager.login();                 // 未ログインならここで遷移して戻らない
+      const profile = await liffManager.getProfile();
+      if (!profile) throw new Error('Profile not available'); // ここで絞り込み
       await saveUserToBackend(profile);
       return profile;
     },
@@ -85,406 +173,453 @@ export default function Home() {
       setUserProfile(profile);
       setIsLoggedIn(true);
       setError(null);
-      showToast('ログインしました', 'success');
     },
-    onError: (error: Error) => {
-      console.error('Login failed:', error);
+    onError: (e) => {
+      console.error('Login failed:', e);
       setError('ログインに失敗しました。もう一度お試しください。');
     },
   });
 
-  // Form submission mutation
-  const submitFormMutation = useMutation({
+
+  const adminLoginMutation = useMutation<LiffProfile, Error>({
     mutationFn: async () => {
-      if (!userProfile) throw new Error('User not logged in');
-
-      // Validate form URL
-      if (!GoogleFormsManager.validateFormUrl(formUrl)) {
-        throw new Error('無効なGoogleフォームURLです');
-      }
-
-      // Submit to Google Forms
-      console.log('DEBUG: Using app/page.tsx file for form submission');
-      const result = await GoogleFormsManager.submitToForm({
-        userId: userProfile.userId,
-        additionalMessage: additionalMessage || undefined,
-        formUrl: formUrl,
-      });
-
-      // Save submission to backend
-      const response = await fetch('/api/form-submissions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          lineUserId: userProfile.userId,
-          formUrl: formUrl,
-          additionalMessage: additionalMessage || null,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save submission');
-      }
-
-      return result;
+      await liffManager.login();
+      const profile = await liffManager.getProfile();
+      if (!profile) throw new Error('Profile not available'); // ← 同様に
+      await saveAdminToBackend(profile);
+      return profile;
     },
-    onSuccess: (result) => {
-      setHasSubmitted(true);
-      setSubmissionTime(result.timestamp);
+    onSuccess: (profile) => {
+      setUserProfile(profile);
+      setIsLoggedIn(true);
       setError(null);
-      showToast('送信が完了しました', 'success');
-
-      // Invalidate form submissions query
-      if (userProfile) {
-        queryClient.invalidateQueries({
-          queryKey: ['/api/form-submissions', userProfile.userId]
-        });
-      }
+      window.location.href = "/line-settings";
     },
-    onError: (error: Error) => {
-      console.error('Form submission failed:', error);
-      setError(error.message);
+    onError: (e) => {
+      console.error("Admin login failed:", e);
+      setError("管理者ログインに失敗しました。もう一度お試しください。");
     },
   });
 
-  const handleLineLogin = () => {
-    if (loginMutation.isPending) return;
-    setError(null);
-    loginMutation.mutate();
+  // 管理者ログイン時のみ使う保存関数
+  const saveAdminToBackend = async (profile: LiffProfile) => {
+    await apiRequest("POST", "/api/line-admin", {
+      lineUserId: profile.userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl ?? null,
+    });
   };
 
-  const handleCopyUserId = async () => {
-    if (!userProfile) return;
+  // ✅ 管理者ログインも同様に修正
+  // const adminLoginMutation = useMutation({
+  //   mutationFn: async () => {
+  //     await liffManager.login();
+  //     const profile = await liffManager.getProfile();
+  //     await saveAdminToBackend(profile);
+  //     return profile;
+  //   },
+  //   onSuccess: (profile) => {
+  //     setUserProfile(profile);
+  //     setIsLoggedIn(true);
+  //     setError(null);
+  //     window.location.href = "/line-settings";
+  //   },
+  //   onError: (e: Error) => {
+  //     console.error("Admin login failed:", e);
+  //     setError("管理者ログインに失敗しました。もう一度お試しください。");
+  //   },
+  // });
 
-    try {
-      await navigator.clipboard.writeText(userProfile.userId);
-      showToast('ユーザーIDをコピーしました', 'success');
-    } catch (error) {
-      showToast('コピーに失敗しました', 'error');
+  const handleAdminLogin = () => {
+    if (!adminLoginMutation.isPending) {
+      setError(null);
+      adminLoginMutation.mutate();
     }
   };
 
-  const handleSubmitForm = () => {
-    if (!userProfile || submitFormMutation.isPending) return;
-
+  // ---- detect entry ids --------------------------------------------------
+  const handleDetectEntries = async () => {
     if (!formUrl.trim()) {
-      showToast('フォームURLを入力してください', 'error');
+      showToast('フォームURLを先に入力してください', 'error');
       return;
     }
+    setIsDetecting(true);
+    setDetectedEntries(null);
+    setLastDetectionResult(null);
+    try {
+      const normalized = (GoogleFormsManager as any).normalizeFormUrl
+        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+        : formUrl;
 
-    setError(null);
-    submitFormMutation.mutate();
-  };
-
-  const handleReset = () => {
-    setIsLoggedIn(false);
-    setUserProfile(null);
-    setHasSubmitted(false);
-    setSubmissionTime(null);
-    setError(null);
-    setFormUrl("https://forms.gle/example123");
-    setAdditionalMessage("");
-    liffManager.logout();
-  };
-
-  const handleRetry = () => {
-    setError(null);
-    if (!isLoggedIn) {
-      handleLineLogin();
-    } else {
-      handleSubmitForm();
+      const result = await GoogleFormsManager.detectEntryIds(normalized);
+      if (result.success) {
+        if (result.title) setFormTitle(result.title);
+        if (result.description) setFormDescription(result.description);
+        setDetectedEntries({ userId: result.userId, message: result.message });
+        setLastDetectionResult({ userId: result.userId!, message: result.message, formUrl: normalized });
+      } else {
+        showToast(`検出に失敗しました: ${result.error}`, 'error');
+      }
+    } catch (e) {
+      // /api/forms/inspect が 404 でも致命ではないので握りつぶす
+      console.warn('Entry detection fallback:', e);
+      showToast('検出中にエラーが発生しました', 'error');
+    } finally {
+      setIsDetecting(false);
     }
   };
 
+  // ---- prefill url builder ----------------------------------------------
+  const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
+    try {
+      const baseUrl = originalUrl.split('?')[0];
+
+      let userIdEntry =
+        lastDetectionResult?.formUrl === originalUrl ? lastDetectionResult.userId : detectedEntries?.userId;
+
+      if (!userIdEntry) {
+        try {
+          const detection = await GoogleFormsManager.detectEntryIds(originalUrl);
+          if (detection.success && detection.userId) {
+            userIdEntry = detection.userId;
+            setLastDetectionResult({ userId: detection.userId, message: detection.message, formUrl: originalUrl });
+            setDetectedEntries({ userId: detection.userId, message: detection.message });
+            if (detection.title) setFormTitle(detection.title);
+            if (detection.description) setFormDescription(detection.description);
+          }
+        } catch {
+          /* noop（404等は無視） */
+        }
+      }
+
+      userIdEntry = userIdEntry ?? 'entry.1795297917';
+
+      const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
+      if (detectedEntries?.message) return `${prefillUrl}&${detectedEntries.message}=`;
+      return prefillUrl;
+    } catch (e) {
+      console.error('Failed to generate prefill URL:', e);
+      return originalUrl;
+    }
+  };
+
+  // ---- derived urls ------------------------------------------------------
+  const viewUrlNormalized = useMemo(() => {
+    try {
+      return (GoogleFormsManager as any).normalizeFormUrl
+        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+        : formUrl;
+    } catch {
+      return formUrl;
+    }
+  }, [formUrl]);
+
+  const appUrl = useMemo(() => {
+    if (!viewUrlNormalized) return '';
+    const notify = notifyEnabled ? '1' : '0';
+    return `${window.location.origin}/?form=${encodeURIComponent(viewUrlNormalized)}&redirect=true&notify=${notify}`;
+  }, [viewUrlNormalized, notifyEnabled]);
+
+  const previewUrl = useMemo(() => {
+    if (!viewUrlNormalized) return '';
+    const params = new URLSearchParams({
+      form: viewUrlNormalized,
+      title: formTitle || '',
+      desc: formDescription || 'リンクを開くにはこちらをタップ',
+      notify: notifyEnabled ? '1' : '0',
+      v: String(Date.now()),
+    });
+    return `${window.location.origin}/api/link-preview?${params.toString()}`;
+  }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
+
+  // ---- send + navigate (once) -------------------------------------------
+  // 送信 & フォーム遷移
+  const sendLineMessageAndOpenForm = async (manual: boolean) => {
+    if (!userProfile || !generatedUrl) return;
+    if (!messageSentRef.current && notifyEnabled) {
+      messageSentRef.current = true;
+      const payload = {
+        userId: userProfile.userId,
+        type: "card" as const,
+        formUrl: generatedUrl,
+        title: formTitle || "Googleフォーム回答通知",
+        description: formDescription || "リンクを開くにはこちらをタップ",
+      };
+      // 1) ページ遷移中断対策：sendBeacon > keepalive fetch の順でトライ
+      try {
+        let sent = false;
+        if ("sendBeacon" in navigator) {
+          const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+          sent = navigator.sendBeacon("/api/line", blob);
+        }
+        if (!sent) {
+          await fetch("/api/line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            // ページ遷移が始まっても送信を継続
+            keepalive: true,
+          }).catch((e) => console.warn("send-message failed (keepalive):", e));
+        }
+      } catch (e) {
+        console.warn("send-message failed:", e);
+      }
+    }
+    // フォームへ遷移
+    if (!navigatedRef.current) {
+      navigatedRef.current = true;
+      const go = () => window.location.replace(generatedUrl);
+      // 送信の猶予を少し長めに。60ms → 250ms
+      if (manual) go();
+      else setTimeout(go, 250);
+    }
+  };
+
+
+  // ---- UI ---------------------------------------------------------------
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-line-green mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-line-green mx-auto mb-4" />
           <p className="text-gray-600">アプリを初期化中...</p>
         </div>
       </div>
     );
   }
 
+  const handleLineSettings = () => {
+    console.log('LINE Settings button clicked');
+    window.location.href = '/line-settings';
+  };
+
   return (
     <div className="bg-gray-50 font-noto min-h-screen">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-line-green rounded-lg flex items-center justify-center">
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
-                  <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.2 0-.395-.078-.534-.22a.631.631 0 01-.028-.028l-2.51-2.681v2.262c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.27.173-.51.43-.595.06-.02.124-.029.188-.029.2 0 .395.078.534.22a.631.631 0 01.028.028l2.51 2.681V8.108c0-.345.282-.63.631-.63.345 0 .627.285.627.63v4.771z" />
-                  <path d="M9.5 8.738c0-.345-.282-.63-.631-.63-.345 0-.627.285-.627.63v4.771c0 .345.282.63.627.63.349 0 .631-.285.631-.63V8.738z" />
-                  <path d="M6.419 13.509c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.345.282-.63.627-.63h1.888c.832 0 1.509.677 1.509 1.509v.63c0 .832-.677 1.508-1.509 1.508H6.419v2.384zm.631-3.645h1.257c.173 0 .315-.141.315-.315v-.63c0-.174-.142-.315-.315-.315H7.05v1.26z" />
-                </svg>
-              </div>
-              <h1 className="text-lg font-semibold text-gray-900">UID取得システム</h1>
-            </div>
-            <div className="text-sm text-gray-500">v2.0</div>
+            <h1 className="text-lg font-semibold text-gray-900">Googleフォーム-LINE連携システム</h1>
+            <div className="text-sm text-gray-500">v1.0</div>
           </div>
         </div>
       </header>
 
       <main className="max-w-md mx-auto px-4 py-6">
-        {/* Welcome Card - shown when not authenticated */}
-        {!isLoggedIn && (
+        {/* 未ログイン & 自動モード */}
+        {!isLoggedIn && isAutoMode && (
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="text-center">
-                <img
-                  src="https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=300"
-                  alt="スマートフォンでLINEアプリを使用している様子"
-                  className="w-32 h-24 object-cover rounded-lg mx-auto mb-4"
-                />
-
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
                 <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                  LINEアカウントでログインして、<br />
-                  ユーザーIDを安全に取得します
+                  LINEアカウントでログインして、ユーザーIDを安全に取得します
                 </p>
-
                 <Button
                   onClick={handleLineLogin}
                   disabled={loginMutation.isPending}
                   className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
                   data-testid="button-line-login"
                 >
-                  {loginMutation.isPending ? (
-                    <div className="flex items-center justify-center space-x-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      <span>認証中...</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center space-x-2">
-                      <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
-                        <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.627-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.031-.199.031-.2 0-.395-.078-.534-.22a.631.631 0 01-.028-.028l-2.51-2.681v2.262c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.27.173-.51.43-.595.06-.02.124-.029.188-.029.2 0 .395.078.534.22a.631.631 0 01.028.028l2.51 2.681V8.108c0-.345.282-.63.631-.63.345 0 .627.285.627.63v4.771z" />
-                        <path d="M9.5 8.738c0-.345-.282-.63-.631-.63-.345 0-.627.285-.627.63v4.771c0 .345.282.63.627.63.349 0 .631-.285.631-.63V8.738z" />
-                        <path d="M6.419 13.509c0 .345-.282.63-.631.63-.345 0-.627-.285-.627-.63V8.108c0-.345.282-.63.627-.63h1.888c.832 0 1.509.677 1.509 1.509v.63c0 .832-.677 1.508-1.509 1.508H6.419v2.384zm.631-3.645h1.257c.173 0 .315-.141.315-.315v-.63c0-.174-.142-.315-.315-.315H7.05v1.26z" />
-                      </svg>
-                      <span>LINEでログイン</span>
-                    </div>
-                  )}
+                  {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* User Info Card - shown after authentication */}
-        {isLoggedIn && userProfile && !hasSubmitted && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="flex items-center space-x-4 mb-6">
-                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                  {userProfile.pictureUrl ? (
-                    <img
-                      src={userProfile.pictureUrl}
-                      alt={userProfile.displayName}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <svg className="w-8 h-8 text-gray-400" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                    </svg>
-                  )}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900" data-testid="text-display-name">
-                    {userProfile.displayName}
-                  </h3>
-                  <p className="text-sm text-gray-500">LINEユーザー</p>
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">ユーザーID</label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyUserId}
-                    className="text-xs text-line-green hover:text-line-brand font-medium h-auto p-1"
-                    data-testid="button-copy-uid"
-                  >
-                    <Copy className="w-3 h-3 mr-1" />
-                    コピー
-                  </Button>
-                </div>
-                <div className="bg-white rounded border p-3">
-                  <code className="text-sm font-mono text-gray-800 break-all" data-testid="text-user-id">
-                    {userProfile.userId}
-                  </code>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2 text-success-green bg-green-50 rounded-lg p-3">
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
-                </svg>
-                <span className="text-sm font-medium">ログイン成功</span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Google Form Card */}
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="w-8 h-8 bg-google-blue rounded-lg flex items-center justify-center">
-                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Googleフォーム送信</h3>
+        {/* 自動モード：ログイン済み → フォームアクセス */}
+        {isLoggedIn && userProfile && formUrl && isAutoMode && (
+          isGeneratingUrl ? (
+            <div className="text-center">
+              <h3 className="text-base font-semibold">
+                <span className="text-blue-600">URLを生成中...</span>
+              </h3>
             </div>
-
-            <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-              取得したユーザーIDを指定のGoogleフォームに送信します
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  送信先フォームURL
-                </label>
-                <div className="relative">
-                  <Input
-                    type="url"
-                    value={formUrl}
-                    onChange={(e) => setFormUrl(e.target.value)}
-                    placeholder="https://forms.gle/..."
-                    className="pr-8"
-                    data-testid="input-form-url"
-                  />
-                  <ExternalLink className="w-4 h-4 absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  追加メッセージ（オプション）
-                </label>
-                <Textarea
-                  value={additionalMessage}
-                  onChange={(e) => setAdditionalMessage(e.target.value)}
-                  rows={3}
-                  placeholder="フォームと一緒に送信する追加情報があれば入力してください"
-                  className="resize-none"
-                  data-testid="textarea-additional-message"
-                />
-              </div>
-            </div>
-
-            <Button
-              onClick={handleSubmitForm}
-              disabled={!isLoggedIn || submitFormMutation.isPending || hasSubmitted}
-              className={cn(
-                "w-full font-medium py-3 px-6 rounded-lg mt-6 transition-all duration-200 min-h-[48px]",
-                isLoggedIn && !hasSubmitted
-                  ? "bg-google-blue hover:bg-blue-600 text-white"
-                  : "bg-gray-300 text-gray-500 cursor-not-allowed"
-              )}
-              data-testid="button-submit-form"
+          ) : (
+            <button
+              onClick={() => sendLineMessageAndOpenForm(true)}
+              disabled={isSendingMessage || !generatedUrl}
+              className="w-full p-0 h-auto"
+              data-testid="button-access-form"
             >
-              {submitFormMutation.isPending ? (
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>送信中...</span>
-                </div>
-              ) : hasSubmitted ? (
-                "送信完了"
-              ) : isLoggedIn ? (
-                "Googleフォームに送信"
-              ) : (
-                "LINEログイン後に有効になります"
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Success Card - shown after form submission */}
-        {hasSubmitted && submissionTime && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-success-green rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">送信完了</h3>
-                <p className="text-gray-600 text-sm mb-6">
-                  ユーザーIDがGoogleフォームに正常に送信されました
-                </p>
-
-                <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">送信日時:</span>
-                    <span className="font-mono text-gray-800" data-testid="text-submission-time">
-                      {submissionTime.toLocaleString('ja-JP')}
-                    </span>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={handleReset}
-                  variant="outline"
-                  className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
-                  data-testid="button-reset"
-                >
-                  新しいセッションを開始
-                </Button>
+              <div className="text-center text-blue">
+                <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
               </div>
-            </CardContent>
-          </Card>
+            </button>
+          )
         )}
 
-        {/* Error Card */}
-        {error && (
-          <Card className="mb-6 border-red-200">
-            <CardContent className="pt-6">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-error-red rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                  </svg>
+        {/* 通常（管理者モード） */}
+        {!isAutoMode && (
+          <>
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
                 </div>
-                <div className="flex-1">
-                  <h4 className="text-base font-medium text-error-red mb-2">エラーが発生しました</h4>
-                  <p className="text-sm text-gray-600 mb-4" data-testid="text-error-message">
-                    {error}
-                  </p>
-                  <Button
-                    onClick={handleRetry}
-                    size="sm"
-                    className="bg-error-red hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg text-sm transition-colors duration-200"
-                    data-testid="button-retry"
-                  >
-                    <RefreshCw className="w-4 h-4 mr-1" />
-                    再試行
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+
+                {isAdmin ? (
+                  <div className="space-y-4">
+                    <div>
+                      <Input
+                        type="url"
+                        value={formUrl}
+                        onChange={(e) => {
+                          setFormUrl(e.target.value);
+                          if (detectedEntries) setDetectedEntries(null);
+                          if (lastDetectionResult) setLastDetectionResult(null);
+                        }}
+                        placeholder="ここにGoogleフォームのURLを入力"
+                        className="pr-5 text-gray-600 text-sm"
+                      />
+
+                      <div className="mt-3 flex items-center space-x-2">
+                        <input
+                          id="notify"
+                          type="checkbox"
+                          checked={notifyEnabled}
+                          onChange={(e) => setNotifyEnabled(e.target.checked)}
+                          className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                        />
+                        <label htmlFor="notify" className="text-sm text-gray-700">
+                          回答通知をLINEに送信する
+                        </label>
+                      </div>
+                      {notifyEnabled &&
+                        <>
+                          <div className="border-t pt-4">
+                            <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4>
+                            <div className="space-y-2">
+                              <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+                                回答通知を受け取るには、公式LINEアの設定が必要です
+                              </p>
+                              <Button
+                                onClick={handleAdminLogin}
+                                disabled={loginMutation.isPending}
+                                className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
+                                data-testid="button-line-login"
+                              >
+                                {loginMutation.isPending ? '認証中...' : '管理者としてログイン'}
+                              </Button>
+                              <Button
+                                onClick={handleLineSettings}
+                                variant="outline"
+                                className="w-full justify-start"
+                              >
+                                <Settings className="w-4 h-4 mr-2" />
+                                LINE API設定
+                              </Button>
+                            </div>
+                          </div>
+                          <a href="https://account.line.biz/login">LINEビジネス</a>
+                        </>
+                      }
+                      <Button
+                        onClick={handleDetectEntries}
+                        disabled={isDetecting}
+                        variant={formUrl ? 'default' : 'outline'}
+                        size="sm"
+                        className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
+                      >
+                        {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
+                      </Button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="p-4 bg-green-50 rounded-lg border">
+                        {detectedEntries && (
+                          <h4 className="text-sm font-semibold text-green-800 mb-2">連携リンクを生成しました。以下のリンクを</h4>
+                        )}
+                        <h4 className="text-sm font-semibold text-green-800 mb-2">GoogleフォームURLとしてご利用ください。</h4>
+                        <p className="text-xs text-green-700 mb-3">フォームのデータが公式LINEで利用可能になります</p>
+
+                        <div className="bg-white rounded border p-3 mb-3">
+                          <code className="text-xs font-mono text-gray-800 break-all">
+                            {isDetecting ? '...' : detectedEntries ? appUrl : '・・・'}
+                          </code>
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={async () => {
+                          if (!formUrl) return;
+                          const url = previewUrl || appUrl;
+                          try {
+                            await navigator.clipboard.writeText(url);
+                            showToast('リンクをコピーしました', 'success');
+                          } catch {
+                            showToast('コピーに失敗しました', 'error');
+                          }
+                        }}
+                        variant={detectedEntries ? 'default' : 'outline'}
+                        size="sm"
+                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2"
+                      >
+                        <Copy className="w-3 h-3 mr-1" />
+                        リンクをコピー（LINE用プレビュー）
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="p-3 bg-amber-50 rounded-lg mb-4">
+                      <h5 className="text-xs font-semibold text-amber-800 mb-1">Googleフォーム側の重要な設定</h5>
+                      <p className="text-xs text-amber-700 mb-2">
+                        ⚠️LINEと連携するため、<strong style={{ color: 'red' }}>必ず次の設定をしてください</strong>
+                      </p>
+                      <div className="bg白 rounded border p-2 mb-2">
+                        <p className="text-xs text-gray-600">
+                          📝 <strong>設定手順：</strong><br />
+                          1. 質問１のタイトル: 「LINE User ID」<br />
+                          2. 質問１の回答形式: 記述式（短文）<br />
+                          3. 質問１の必須: ON（メールアドレス設定は任意）
+                        </p>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => setIsAdmin(true)}
+                      variant="default"
+                      size="sm"
+                      className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2 text-white"
+                    >
+                      はじめる
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-row justify-center m-4">
+              <button onClick={() => setIsAdmin(false)} className="px-2">
+                {isAdmin ? (
+                  <div className="rounded-full h-3 w-3 bg-primary" />
+                ) : (
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                )}
+              </button>
+              <button onClick={() => setIsAdmin(true)} className="px-2">
+                {!isAdmin ? (
+                  <div className="rounded-full h-3 w-3 bg-primary" />
+                ) : (
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                )}
+              </button>
+            </div>
+          </>
         )}
       </main>
 
-      {/* Footer */}
       <footer className="max-w-md mx-auto px-4 py-6 text-center">
         <div className="text-xs text-gray-500 space-y-2">
           <p>© 2024 LINE UID Collection System</p>
           <div className="flex items-center justify-center space-x-4">
-            <a href="https://github.com/asagaorino0/LINE_login.git" className="hover:text-line-green transition-colors" target="_blank" rel="noopener noreferrer">
+            <a
+              href="https://github.com/asagaorino0/LINE_login.git"
+              className="hover:text-line-green transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <Github className="w-3 h-3 mr-1 inline" />
               GitHub
             </a>
@@ -500,13 +635,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Toast Notification */}
-      <ToastNotification
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={hideToast}
-      />
+      <ToastNotification message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={hideToast} />
     </div>
   );
 }

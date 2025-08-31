@@ -1,122 +1,72 @@
-declare global {
-  interface Window {
-    liff: any;
-  }
-}
-
+// lib/liff.ts
 export interface LiffProfile {
   userId: string;
   displayName: string;
   pictureUrl?: string;
 }
 
+let liffLib: any | null = null;
+
 export class LiffManager {
   private static instance: LiffManager;
   private isInitialized = false;
 
   static getInstance(): LiffManager {
-    if (!LiffManager.instance) {
-      LiffManager.instance = new LiffManager();
-    }
+    if (!LiffManager.instance) LiffManager.instance = new LiffManager();
     return LiffManager.instance;
   }
 
   async init(): Promise<boolean> {
+    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    if (!liffId) {
+      console.warn('LIFF disabled: NEXT_PUBLIC_LIFF_ID missing');
+      this.isInitialized = false;
+      return false;
+    }
+    if (!liffLib) {
+      // SSR安全な動的 import
+      const mod = await import('@line/liff');
+      liffLib = mod.default;
+    }
     try {
-      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-      
-      // Development mode - if no LIFF_ID is provided, use mock mode
-      if (!liffId) {
-        console.warn('LIFF ID is not configured. Running in development mock mode.');
-        this.isInitialized = true;
-        return true;
-      }
-
-      if (!window.liff) {
-        throw new Error('LIFF SDK is not loaded. Please include the LIFF SDK script.');
-      }
-
-      await window.liff.init({ liffId });
+      await liffLib.init({ liffId, withLoginOnExternalBrowser: true });
       this.isInitialized = true;
       return true;
-    } catch (error) {
-      console.error('LIFF initialization failed:', error);
-      // Fallback to mock mode for development
-      console.warn('Falling back to development mock mode.');
-      this.isInitialized = true;
-      return true;
-    }
-  }
-
-  async login(): Promise<LiffProfile> {
-    if (!this.isInitialized) {
-      throw new Error('LIFF is not initialized');
-    }
-
-    try {
-      // Check if in development mode (no actual LIFF)
-      if (!process.env.NEXT_PUBLIC_LIFF_ID || !window.liff) {
-        // Return mock profile for development
-        return {
-          userId: `U${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-          displayName: 'デモユーザー',
-          pictureUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&h=400',
-        };
-      }
-
-      if (!window.liff.isLoggedIn()) {
-        window.liff.login({ redirectUri: window.location.href });
-        // This will redirect, so we won't reach here
-        throw new Error('Redirecting to LINE login...');
-      }
-
-      const profile = await window.liff.getProfile();
-      return {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        pictureUrl: profile.pictureUrl,
-      };
-    } catch (error) {
-      console.error('LINE login failed:', error);
-      throw error;
-    }
-  }
-
-  logout(): void {
-    if (this.isInitialized && window.liff && window.liff.isLoggedIn()) {
-      window.liff.logout();
+    } catch (e) {
+      console.warn('LIFF init failed:', e);
+      this.isInitialized = false;
+      return false;
     }
   }
 
   isLoggedIn(): boolean {
-    // In development mode without LIFF, always return false initially
-    if (!process.env.NEXT_PUBLIC_LIFF_ID || !window.liff) {
-      return false;
-    }
-    return this.isInitialized && window.liff && window.liff.isLoggedIn();
+    try { return !!(this.isInitialized && liffLib?.isLoggedIn?.()); }
+    catch { return false; }
   }
 
+  // lib/liff.ts
+  async login(): Promise<void> {
+    if (!this.isInitialized || !liffLib) throw new Error('LIFF not ready');
+    if (!liffLib.isLoggedIn?.()) {
+      liffLib.login({ redirectUri: window.location.href }); // 未ログイン時だけリダイレクト
+    }
+    // 既にログイン済みなら何もしない
+  }
+
+
   async getProfile(): Promise<LiffProfile | null> {
-    if (!this.isLoggedIn()) {
-      return null;
-    }
-
+    if (!this.isInitialized || !liffLib?.isLoggedIn?.()) return null;
     try {
-      // Check if in development mode (no actual LIFF)
-      if (!process.env.NEXT_PUBLIC_LIFF_ID || !window.liff) {
-        return null;
-      }
-
-      const profile = await window.liff.getProfile();
-      return {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        pictureUrl: profile.pictureUrl,
-      };
-    } catch (error) {
-      console.error('Failed to get profile:', error);
+      const p = await liffLib.getProfile();
+      return { userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl };
+    } catch (e) {
+      console.warn('getProfile failed:', e);
       return null;
     }
+  }
+
+  logout(): void {
+    try { liffLib?.logout?.(); } catch { }
   }
 }
 

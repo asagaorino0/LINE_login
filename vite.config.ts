@@ -7,13 +7,12 @@ export default defineConfig({
   plugins: [
     react(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
       ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-        ]
+        await import("@replit/vite-plugin-cartographer").then((m) =>
+          m.cartographer(),
+        ),
+      ]
       : []),
   ],
   resolve: {
@@ -29,6 +28,16 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    port: 3001,            // ← 既存の想定に合わせて固定
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000", // ← Next の開発サーバ
+        changeOrigin: true,
+        secure: false,
+        // ws: true, // WebSocketが要る場合だけ
+      },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
