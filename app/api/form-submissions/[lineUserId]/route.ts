@@ -27,25 +27,28 @@
 // }
 
 // app/api/form-submissions/[lineUserId]/route.ts
+// app/api/form-submissions/[lineUserId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+export const runtime = 'nodejs';
+
+type RouteContext = { params: { lineUserId: string } };
 
 export async function GET(
-  req: NextRequest,
-  context: { params: { lineUserId: string } }
+  _req: NextRequest,
+  { params }: RouteContext
 ) {
-  const { lineUserId } = context.params;
+  const { lineUserId } = params;
   return NextResponse.json({ ok: true, lineUserId });
 }
 
-
 export async function POST(
   req: NextRequest,
-  context: { params: { lineUserId: string } }
+  { params }: RouteContext
 ) {
   const body = await req.json();
   return NextResponse.json({
     ok: true,
-    lineUserId: context.params.lineUserId,
-    body
+    lineUserId: params.lineUserId,
+    body,
   });
 }
