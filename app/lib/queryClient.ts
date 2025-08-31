@@ -9,14 +9,16 @@ const isBrowser = typeof window !== "undefined";
 
 /** ベースURL解決（Vite:3001 → Next API:3000 を考慮） */
 function resolveBaseUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_API_BASE_URL; if (explicit && explicit.length > 0) return explicit.replace(/\/+$/, "");
+  const explicit = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (explicit && explicit.length > 0) return explicit.replace(/\/+$/, "");
 
   if (isBrowser) {
     const host = window.location.hostname;
     const port = window.location.port;
     const isLocal = host === "localhost" || host === "127.0.0.1";
+    const isDev = process.env.NODE_ENV !== "production";
 
-    if (import.meta.env?.DEV && isLocal) {
+    if (isDev && isLocal) {
       if (port === "3001") return "http://localhost:3000"; // Vite→Next(API)
       if (port === "3000") return window.location.origin.replace(/\/+$/, "");
     }
