@@ -23,10 +23,9 @@ export default function LineSettingsClient() {
   const [lineUserId, setLineUserId] = useState<string>("");
 
   useEffect(() => {
-    // 既存状態の読み込み（指紋と最終更新のみ）
     (async () => {
       try {
-        const r = await fetch(`/api/line-secrets?shopId=${encodeURIComponent(shopId || "default")}`, { cache: "no-store" });
+        const r = await fetch("/api/line-secrets", { cache: "no-store" });
         if (r.ok) {
           const j = await r.json();
           if (j?.exists) setFingerprints(j.fingerprints ?? null);
@@ -35,7 +34,7 @@ export default function LineSettingsClient() {
     })();
   }, []);
 
-  // LIFF ログイン済みなら管理者を upsert（失敗は握りつぶす）
+  // ② LIFF ログイン済みなら /api/line-admin を呼んで admin/uid クッキーをサーバでセット
   useEffect(() => {
     if (didRunRef.current) return;
     didRunRef.current = true;
@@ -43,12 +42,16 @@ export default function LineSettingsClient() {
       const ok = await liffManager.init();
       if (!ok || !liffManager.isLoggedIn()) return;
       const p = await liffManager.getProfile();
-      if (p) {
-        setLineUserId(p.userId); // ★保存に使う
-        await apiRequest("POST", "/api/line-admin", {
-          lineUserId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl ?? null,
-        }).catch(() => { });
-      }
+      if (!p) return;
+
+      setLineUserId(p.userId); // 表示用に残すだけ（保存には使わない）
+
+      // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
+      await fetch("/api/line-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineUserId: p.userId }),
+      }).catch(() => { });
     })().catch(() => { });
   }, []);
 
@@ -57,11 +60,8 @@ export default function LineSettingsClient() {
     await fetch("/api/admin-logout", { method: "POST" }).catch(() => { });
     router.replace("/");
   };
+  // ③ 保存時は lineUserId を送らない（サーバが cookie の uid を id に使う）
   const handleSaveLineSettings = async () => {
-    if (!lineUserId) {
-      alert("LINE にログインしてください（lineUserId が取得できません）");
-      return;
-    }
     if (!lineSettings.channelAccessToken || !lineSettings.channelSecret) {
       alert("チャンネルアクセストークンとチャンネルシークレットを入力してください");
       return;
@@ -71,11 +71,10 @@ export default function LineSettingsClient() {
       const res = await fetch("/api/line-secrets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lineUserId, ...lineSettings }), // ★id=lineUserIdで保存
+        body: JSON.stringify({ ...lineSettings }), // ← lineUserId は不要
       });
       const text = await res.text();
       if (!res.ok) throw new Error(text || "save failed");
-      // 成功処理（既存のまま）
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
       setLineSettings({ channelAccessToken: "", channelSecret: "", liffId: "" });
