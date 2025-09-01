@@ -13,10 +13,27 @@ import { useAuth } from "../lib/auth";
 
 export default function LineSettingsClient() {
   const router = useRouter();
-  const { user, isLoading, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const [lineSettings, setLineSettings] = useState({ channelAccessToken: "", channelSecret: "", liffId: "" });
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const didRunRef = useRef(false);
+  const [loading, setLoading] = useState(false);
+  const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
+  const shopId = ""; // 必要ならプロフィール等から取得して埋めてください（未設定なら default で保存）
+  const [lineUserId, setLineUserId] = useState<string>("");
+
+  useEffect(() => {
+    // 既存状態の読み込み（指紋と最終更新のみ）
+    (async () => {
+      try {
+        const r = await fetch(`/api/line-secrets?shopId=${encodeURIComponent(shopId || "default")}`, { cache: "no-store" });
+        if (r.ok) {
+          const j = await r.json();
+          if (j?.exists) setFingerprints(j.fingerprints ?? null);
+        }
+      } catch { }
+    })();
+  }, []);
 
   // LIFF ログイン済みなら管理者を upsert（失敗は握りつぶす）
   useEffect(() => {
@@ -26,10 +43,13 @@ export default function LineSettingsClient() {
       const ok = await liffManager.init();
       if (!ok || !liffManager.isLoggedIn()) return;
       const p = await liffManager.getProfile();
-      if (p) await apiRequest("POST", "/api/line-admin", {
-        lineUserId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl ?? null,
-      });
-    })().catch(e => console.warn("admin upsert skipped:", e));
+      if (p) {
+        setLineUserId(p.userId); // ★保存に使う
+        await apiRequest("POST", "/api/line-admin", {
+          lineUserId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl ?? null,
+        }).catch(() => { });
+      }
+    })().catch(() => { });
   }, []);
 
   const handleBackHome = () => router.push("/");
@@ -37,13 +57,33 @@ export default function LineSettingsClient() {
     await fetch("/api/admin-logout", { method: "POST" }).catch(() => { });
     router.replace("/");
   };
-  const handleSaveLineSettings = () => {
+  const handleSaveLineSettings = async () => {
+    if (!lineUserId) {
+      alert("LINE にログインしてください（lineUserId が取得できません）");
+      return;
+    }
     if (!lineSettings.channelAccessToken || !lineSettings.channelSecret) {
       alert("チャンネルアクセストークンとチャンネルシークレットを入力してください");
       return;
     }
-    setShowSuccessMessage(true);
-    setTimeout(() => setShowSuccessMessage(false), 3000);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/line-secrets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineUserId, ...lineSettings }), // ★id=lineUserIdで保存
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || "save failed");
+      // 成功処理（既存のまま）
+      setShowSuccessMessage(true);
+      setTimeout(() => setShowSuccessMessage(false), 3000);
+      setLineSettings({ channelAccessToken: "", channelSecret: "", liffId: "" });
+    } catch (e: any) {
+      alert(`保存失敗: ${e?.message ?? e}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -104,6 +144,16 @@ export default function LineSettingsClient() {
               </div>
             )}
 
+            {fingerprints && (
+              <div className="mb-4 text-xs text-gray-600">
+                <div>保存済みフィンガープリント（照合用・平文は表示しません）</div>
+                <ul className="list-disc ml-5">
+                  {fingerprints.liffId && <li>LIFF ID: {fingerprints.liffId}</li>}
+                  {fingerprints.channelSecret && <li>Channel Secret: {fingerprints.channelSecret}</li>}
+                  {fingerprints.channelAccessToken && <li>Access Token: {fingerprints.channelAccessToken}</li>}
+                </ul>
+              </div>
+            )}
             <div className="space-y-6">
               <div className="space-y-2">
                 <label htmlFor="channelAccessToken" className="text-sm font-medium text-gray-700">チャンネルアクセストークン *</label>
@@ -140,9 +190,9 @@ export default function LineSettingsClient() {
                 <p className="text-xs text-gray-500">LINE Developers Console → LIFF → アプリ設定から取得（オプション）</p>
               </div>
 
-              <Button onClick={handleSaveLineSettings} className="w-full bg-green-600 hover:bg-green-700">
+              <Button onClick={handleSaveLineSettings} disabled={loading} className="w-full bg-green-600 hover:bg-green-700">
                 <Save className="mr-2 h-4 w-4" />
-                設定を保存
+                {loading ? "保存中…" : "設定を保存"}
               </Button>
             </div>
           </CardContent>

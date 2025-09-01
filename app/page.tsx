@@ -485,35 +485,7 @@ export default function Home() {
                           回答通知をLINEに送信する
                         </label>
                       </div>
-                      {notifyEnabled &&
-                        <>
-                          <div className="border-t pt-4">
-                            <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4>
-                            <div className="space-y-2">
-                              <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                                回答通知を受け取るには、公式LINEアの設定が必要です
-                              </p>
-                              <Button
-                                onClick={handleAdminLogin}
-                                disabled={loginMutation.isPending}
-                                className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
-                                data-testid="button-line-login"
-                              >
-                                {loginMutation.isPending ? '認証中...' : '管理者としてログイン'}
-                              </Button>
-                              <Button
-                                onClick={handleLineSettings}
-                                variant="outline"
-                                className="w-full justify-start"
-                              >
-                                <Settings className="w-4 h-4 mr-2" />
-                                LINE API設定
-                              </Button>
-                            </div>
-                          </div>
-                          <a href="https://account.line.biz/login">LINEビジネス</a>
-                        </>
-                      }
+
                       <Button
                         onClick={handleDetectEntries}
                         disabled={isDetecting}
@@ -553,12 +525,42 @@ export default function Home() {
                         }}
                         variant={detectedEntries ? 'default' : 'outline'}
                         size="sm"
-                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2"
+                        className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
                       >
                         <Copy className="w-3 h-3 mr-1" />
-                        リンクをコピー（LINE用プレビュー）
+                        リンクをコピー
                       </Button>
                     </div>
+
+                    {notifyEnabled &&
+                      <>
+                        <div className="border-t pt-4">
+                          <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4>
+                          <div className="space-y-2">
+                            <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+                              回答通知を受け取るには、公式LINEの設定が必要です
+                            </p>
+                            <Button
+                              onClick={handleAdminLogin}
+                              disabled={loginMutation.isPending}
+                              className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
+                              data-testid="button-line-login"
+                            >
+                              {loginMutation.isPending ? '認証中...' : '管理者としてログイン'}
+                            </Button>
+                            {/* <Button
+                                onClick={handleLineSettings}
+                                variant="outline"
+                                className="w-full justify-start"
+                              >
+                                <Settings className="w-4 h-4 mr-2" />
+                                LINE API設定
+                              </Button> */}
+                          </div>
+                        </div>
+                        {/* <a href="https://account.line.biz/login">LINEビジネス</a> */}
+                      </>
+                    }
                   </div>
                 ) : (
                   <>
