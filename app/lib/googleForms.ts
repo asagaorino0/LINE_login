@@ -204,7 +204,8 @@ export class GoogleFormsManager {
 
 
   // googleForms.ts （GoogleFormsManager 内に追加）
-  private static normalizeFormUrl(url: string): string {
+  public static normalizeFormUrl(url: string): string {
+    // private static normalizeFormUrl(url: string): string {
     if (!url) return url;
 
     // 1) 余計なエンコードや空白を除去

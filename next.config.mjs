@@ -13,15 +13,8 @@ const csp = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async headers() {
-    return [{
-      source: "/:path*",
-      headers: [
-        { key: "Content-Security-Policy", value: csp },
-        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        { key: "X-Debug-From-Next", value: "1" }, // ←“反応を見るためだけ”の目印
-      ],
-    }];
+  experimental: {
+    allowedDevOrigins: ["https://d355b4a47e59.ngrok-free.app"],
   },
 };
 
