@@ -3,28 +3,30 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
-export async function GET(_req: NextRequest, { params }: { params: { lid: string } }) {
+/** 同一オリジンなのでCORSは最小でOK */
+const ok = (b: any, s = 200) => NextResponse.json(b, { status: s });
+const fail = (b: any, s = 500) => NextResponse.json(b, { status: s });
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { lid: string } }
+) {
   try {
     const lid = params.lid;
+    if (!lid) return fail({ ok: false, code: "NO_LID" }, 400);
     const c = getLinksByIdContainer();
     const { resource } = await c.item(lid, lid).read<any>();
-    if (!resource) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
-
+    if (!resource) return fail({ ok: false, code: "NOT_FOUND" }, 404);
     const now = Math.floor(Date.now() / 1000);
-    if (resource.disabled) return NextResponse.json({ ok: false, code: "DISABLED" }, { status: 403 });
+    if (resource.disabled) return fail({ ok: false, code: "LID_DISABLED" }, 403);
     if (resource.expiresAt && resource.expiresAt > 0 && resource.expiresAt < now) {
-      return NextResponse.json({ ok: false, code: "EXPIRED" }, { status: 410 });
+      return fail({ ok: false, code: "LID_EXPIRED" }, 410);
     }
-
-    return NextResponse.json({
-      ok: true,
-      aid: resource.aid,
-      formUrl: resource.formUrl,
-      title: resource.title ?? null,
-      desc: resource.desc ?? null,
-    });
+    // 機微は返さない
+    const { aid, basicId = null, formUrl, title = null, desc = null, notify = 0, expiresAt = 0 } = resource;
+    return ok({ ok: true, aid, basicId, formUrl, title, desc, notify, expiresAt });
   } catch (e: any) {
-    console.error("/api/links/[lid] error:", e);
-    return NextResponse.json({ ok: false, code: "ERROR", message: e?.message ?? "error" }, { status: 500 });
+    console.error("GET /api/links/[lid] failed:", e);
+    return fail({ ok: false, code: "LINK_FETCH_FAILED" }, 500);
   }
 }

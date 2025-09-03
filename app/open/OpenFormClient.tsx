@@ -13,16 +13,12 @@ export default function OpenFormClient() {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
-        const form = qs.get("form");
-        const notify = qs.get("notify") === "1";
-        const aid = qs.get("aid") || "";
-        const formId = qs.get("formId") || "";
-        const exp = Number(qs.get("exp") || "0");
-        const sig = qs.get("sig") || "";
-        const title = qs.get("title") || "Googleフォーム回答通知";
+        const lid = qs.get("lid");                      // ★ これが命
+        if (!lid) throw new Error("NO_LID_IN_URL");
 
-        if (!form) throw new Error("NO_FORM_PARAM");
+        console.log("[open] lid =", lid);
 
+        // 必ず /open 画面上で LIFF 初期化
         await liffManager.init();
         if (!liffManager.isLoggedIn()) {
           await liffManager.login();
@@ -31,39 +27,34 @@ export default function OpenFormClient() {
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
 
-        function normalizeFormUrlLocal(url: string): string {
-          try { url = decodeURIComponent(url); } catch { }
-          url = url.trim();
-
-          const token = url.match(/(1FAIpQL[0-9A-Za-z_-]+)/)?.[1];
-          if (token) {
-            if (url.includes("/forms/d/e/")) return `https://docs.google.com/forms/d/e/${token}/viewform`;
-            if (url.includes("/forms/d/")) return `https://docs.google.com/forms/d/${token}/viewform`;
-            return `https://docs.google.com/forms/d/e/${token}/viewform`;
-          }
-          if (/https?:\/\/docs\.google\.com\/forms\/d\/(e\/)?[A-Za-z0-9_-]+\/viewform/.test(url)) {
-            return url.split("?")[0];
-          }
-          return url;
-        }
-
-        const viewUrl = normalizeFormUrlLocal(form);
-
-        // const viewUrl = GoogleFormsManager.normalizeFormUrl
-        //   ? GoogleFormsManager.normalizeFormUrl(form as string)
-        //   : (form as string);
-
+        // lid からリンク情報を取得（aid/basicId, formUrl, title/desc）
+        const r = await fetch(`/api/links/${lid}`, { credentials: "include" });
+        const link = await r.json();
+        if (!r.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
+        // フォームURL正規化＆prefill生成（必要なら検出）
+        const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
+          ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
+          : link.formUrl;
         let userEntry = "entry.1587760013";
         try {
           const det = await GoogleFormsManager.detectEntryIds(viewUrl);
           if (det?.success && det.userId) userEntry = det.userId;
-        } catch { }
+        } catch { /* noop */ }
+        const prefill =
+          `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
-
-        if (notify && !sentRef.current) {
+        // ── ここが肝：payload は lid だけ ─────────────────────────
+        if (!sentRef.current) {
           sentRef.current = true;
-          const payload = { userId: profile.userId, type: "card" as const, formUrl: prefill, title, aid, formId, exp, sig };
+          const payload = {
+            userId: profile.userId,
+            type: "card" as const,
+            formUrl: prefill,
+            title: link.title || "Googleフォーム",
+            desc: link.desc || "フォームに回答してください。",
+            lid, // これで adminKey が一意に解決される
+          };
+          console.log("[open] payload to /api/line =", payload);
           try {
             let sent = false;
             if ("sendBeacon" in navigator) {
@@ -71,13 +62,23 @@ export default function OpenFormClient() {
               sent = navigator.sendBeacon("/api/line", blob);
             }
             if (!sent) {
-              await fetch("/api/line", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), keepalive: true });
+              const rr = await fetch("/api/line", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              });
+              console.log("[open] fetch /api/line status =", rr.status);
             }
-          } catch { }
+          } catch (e) {
+            console.warn("[open] send to /api/line failed:", e);
+          }
         }
 
+        // 少し待ってからフォームへ遷移
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
+        console.error("[open] error:", e);
         setErr(e?.message || String(e));
       }
     })();

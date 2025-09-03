@@ -11,7 +11,7 @@ import { verify } from "@/lib/linkSign";
 
 /* ========= types ========= */
 type SecretsDoc = { id: string; enc: EncPack };
-type Secrets = { channelSecret: string; channelAccessToken: string; liffId?: string };
+type Secrets = { channelSecret: string; channelAccessToken: string; liffId?: string | null };
 
 type Body = {
   userId?: string;
@@ -19,17 +19,20 @@ type Body = {
   type?: "text" | "card";
   formUrl?: string;
   title?: string;
-  desc?: string;        // ★ 追加
-  adminId?: string;
-  // 署名方式
+  desc?: string;
+  // （任意）管理者の明示指定/補助
+  adminId?: string;        // allowlist 用
+  basicId?: string | null; // allowlist / cookie 経由時に使う
+  // 署名パラメータ（任意）
   aid?: string;
   formId?: string;
   exp?: number;
   sig?: string;
-
-  // ✅ 短縮リンク方式
+  // 短縮リンク（任意）
   lid?: string;
 };
+
+type AdminCtx = { aid: string; basicId?: string | null };
 
 const UID_RE = /^U[0-9a-f]{32,}$/i;
 
@@ -38,6 +41,7 @@ function cors(req: NextRequest) {
   const origin = req.headers.get("origin") ?? "*";
   return {
     "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
     Vary: "Origin",
     "Access-Control-Allow-Methods": "POST,OPTIONS",
     "Access-Control-Allow-Headers": "content-type",
@@ -49,58 +53,109 @@ export async function OPTIONS(req: NextRequest) {
 const ok = (req: NextRequest, body: any, status = 200) => NextResponse.json(body, { status, headers: cors(req) });
 const fail = (req: NextRequest, body: any, status = 500) => NextResponse.json(body, { status, headers: cors(req) });
 
-/* ========= aid の解決: lid → 署名 → allowlist → cookie.uid ========= */
-async function resolveAdminId(
+/* ========= adminKey 解決: lid → 署名 → allowlist → cookie ========= */
+async function resolveAdminKey(
   req: NextRequest,
   bodyAdminId?: string,
   signed?: { aid?: string; formId?: string; exp?: number; sig?: string },
   lid?: string,
+  bodyBasicId?: string | null,
 ): Promise<string> {
-  // 0) ✅ lid 最優先（Cosmos の linksById から参照）
+  // 0) lid 最優先（linksById から取得）
   if (lid) {
-    const c = getLinksByIdContainer();
-    const { resource } = await c.item(lid, lid).read<any>();
+    const { resource } = await getLinksByIdContainer()
+      .item(lid, lid)
+      .read<{ aid: string; basicId?: string | null; expiresAt?: number; disabled?: boolean }>();
     if (!resource) { const e = new Error("LID_NOT_FOUND"); (e as any).status = 404; throw e; }
     if (resource.disabled) { const e = new Error("LID_DISABLED"); (e as any).status = 403; throw e; }
     const now = Math.floor(Date.now() / 1000);
     if (resource.expiresAt && resource.expiresAt > 0 && resource.expiresAt < now) {
       const e = new Error("LID_EXPIRED"); (e as any).status = 410; throw e;
     }
-    return resource.aid as string;
+    return resource.basicId ? `${resource.aid}|${resource.basicId}` : resource.aid;
   }
-
-  // 1) 署名方式
+  // 1) 署名方式（aid, formId, exp, sig）
   if (signed?.aid && signed?.formId && signed?.exp && signed?.sig) {
     const v = verify(signed.aid, signed.formId, Number(signed.exp), signed.sig);
     if (!v) { const e = new Error("SIG_INVALID"); (e as any).status = 401; throw e; }
-    return signed.aid;
+    // a) body.basicId が来ていればそれを使う
+    const b1 = normalizeBasicId(bodyBasicId);
+    if (b1) return `${signed.aid}|${b1}`;
+    // b) linksById から aid+formId で basicId を補完（一番新しいものを採用）
+    const { resources } = await getLinksByIdContainer().items.query<{ basicId?: string | null }>(
+      {
+        query: "SELECT TOP 1 c.basicId FROM c WHERE c.aid = @aid AND c.formId = @formId ORDER BY c.createdAt DESC",
+        parameters: [{ name: "@aid", value: signed.aid }, { name: "@formId", value: signed.formId }],
+      }
+    ).fetchAll();
+    const b2 = normalizeBasicId(resources?.[0]?.basicId ?? null);
+    return b2 ? `${signed.aid}|${b2}` : signed.aid;
   }
-
   // 2) allowlist
-  const allow = (process.env.LINE_ADMIN_IDS ?? "").split(",").map(s => s.trim()).filter(Boolean);
-  if (bodyAdminId && allow.length && allow.includes(bodyAdminId)) return bodyAdminId;
-
+  const allow = (process.env.LINE_ADMIN_IDS ?? "")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  if (bodyAdminId && allow.length && allow.includes(bodyAdminId)) {
+    const b = normalizeBasicId(bodyBasicId);
+    return b ? `${bodyAdminId}|${b}` : bodyAdminId;
+  }
   // 3) cookie.uid
-  const jar = await cookies();
-  const uid = jar.get("uid")?.value ?? null;
-  if (uid) return uid;
-
+  const uid = (await cookies()).get("uid")?.value ?? null;
+  if (uid) {
+    const b = normalizeBasicId(bodyBasicId);
+    return b ? `${uid}|${b}` : uid;
+  }
   const e = new Error("NO_ADMIN_ID"); (e as any).status = 401; throw e;
 }
 
-/* ========= Cosmos から資格復号 ========= */
-async function loadSecretsByAdminId(adminId: string): Promise<Secrets> {
-  const c = getLineSecretsByIdContainer();
-  const { resource } = await c.item(adminId, adminId).read<SecretsDoc>();
-  if (!resource) { const e = new Error("NO_SECRETS_DOC"); (e as any).status = 404; throw e; }
-  const obj = open(resource.enc) as Secrets;
-  if (!obj?.channelAccessToken || !obj?.channelSecret) {
-    const e = new Error("INVALID_SECRETS_DOC"); (e as any).status = 422; throw e;
-  }
-  return obj;
+/** "@xxx" を保証。Cosmos id の NG 文字（/ \ ? #）を弾く */
+function normalizeBasicId(b: string | null | undefined): string | null {
+  const x = (b ?? "").trim();
+  if (!x) return null;
+  const at = x.startsWith("@") ? x : `@${x}`;
+  if (/[\/\\?#]/.test(at)) { const e = new Error("BAD_BASIC_ID"); (e as any).status = 400; throw e; }
+  return at;
 }
 
-/* ========= Flexメッセージ（安全版：余計なプロパティ無し） ========= */
+/* ========= Secrets 取得 ========= */
+async function loadSecretsByAdminKey(adminKey: string): Promise<Secrets> {
+  const c = getLineSecretsByIdContainer();
+  // まずはそのまま read
+  const tryId = async (id: string) => {
+    const { resource } = await c.item(id, id).read<SecretsDoc>();
+    if (!resource) return null;
+    const dec = open(resource.enc) as Secrets;
+    if (!dec?.channelAccessToken || !dec?.channelSecret) {
+      const e = new Error("INVALID_SECRETS_DOC"); (e as any).status = 422; throw e;
+    }
+    return dec;
+  };
+  if (adminKey.includes("|")) {
+    const got = await tryId(adminKey);
+    if (got) return got;
+  } else {
+    const got = await tryId(adminKey);
+    if (got) return got;
+    // aid しか無い → aid|@xxxx が 1 件だけならそれを使う
+    const { resources } = await c.items
+      .query<{ id: string; enc: EncPack }>(
+        { query: "SELECT c.id, c.enc FROM c WHERE STARTSWITH(c.id, @p)", parameters: [{ name: "@p", value: `${adminKey}|` }] }
+      )
+      .fetchAll();
+    if ((resources?.length ?? 0) === 1) {
+      const dec = open(resources![0].enc) as Secrets;
+      if (!dec?.channelAccessToken || !dec?.channelSecret) {
+        const e = new Error("INVALID_SECRETS_DOC"); (e as any).status = 422; throw e;
+      }
+      return dec;
+    }
+    if ((resources?.length ?? 0) > 1) {
+      const e = new Error("AMBIGUOUS_ADMIN"); (e as any).status = 409; throw e;
+    }
+  }
+  const e = new Error("NO_SECRETS_DOC"); (e as any).status = 404; throw e;
+}
+
+/* ========= Flexメッセージ ========= */
 function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMessage {
   return {
     type: "flex",
@@ -114,54 +169,58 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMess
       body: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555" }
+          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" } // ← 6桁
         ]
       },
       footer: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          { // フォームを開く
-            type: "button", style: "primary",
-            action: { type: "uri", label: "フォームを開く", uri: formUrl }
-          },
-          { // 回答済み通知
-            type: "button", style: "secondary",
-            action: { type: "message", label: "回答済を通知", text: "申し込みフォーム回答済み" }
-          }
+          // { type: "button", style: "primary", action: { type: "uri", label: "フォームを開く", uri: formUrl } },
+          { type: "button", style: "secondary", action: { type: "message", label: "回答済を通知", text: "申し込みフォーム回答済み" } }
         ]
       }
     }
   };
 }
 
-
 /* ========= メイン ========= */
 export async function POST(req: NextRequest) {
   try {
-    const { userId, message, type, formUrl, title, desc, adminId, aid, formId, exp, sig, lid } =
+    const { userId, message, type, formUrl, title, desc, lid, adminId, basicId, aid, formId, exp, sig } =
       (await req.json()) as Body;
-
-    // 受信ログ（機微は伏せる）
+    // console.log(
+    //   "lid********************************************************************", lid
+    // )
+    // // ログ（機微は伏せる）
     console.log("[/api/line] recv", {
       type,
       hasMsg: Boolean(message),
       hasFormUrl: Boolean(formUrl),
       userId: userId ? userId.slice(0, 6) + "…" : null,
       via: lid ? "lid" : (aid && formId && exp && sig ? "signed" : (adminId ? "allowlist" : "cookie")),
+      basicId: basicId
     });
+    // 入力チェック
+    if (!userId) return fail(req, { success: false, code: "NO_USER_ID" }, 400);
+    if (!UID_RE.test(userId)) return fail(req, { success: false, code: "BAD_UID" }, 400);
 
-    // バリデーション
-    if (!userId) return fail(req, { success: false, code: "NO_USER_ID", message: "userId is required" }, 400);
-    if (!UID_RE.test(userId)) return fail(req, { success: false, code: "BAD_UID", message: "Invalid LINE user ID format" }, 400);
-
-    // aid 解決
-    const resolvedAdminId = await resolveAdminId(req, adminId, { aid, formId, exp, sig }, lid);
-    console.log("[/api/line] resolved admin:", resolvedAdminId.slice(0, 6) + "…");
-
-    // 資格ロード
-    const { channelAccessToken, channelSecret } = await loadSecretsByAdminId(resolvedAdminId);
+    // adminKey ＝ “aid” or “aid|@basicId”
+    const adminKey = await resolveAdminKey(req, adminId, { aid, formId, exp, sig }, lid, basicId ?? null);
+    console.log("[/api/line] adminKey:", adminKey.includes("|")
+      ? adminKey.split("|")[0].slice(0, 6) + "…|…"
+      : adminKey.slice(0, 6) + "…", adminKey, basicId);
+    // 認証情報読込
+    const { channelAccessToken, channelSecret } = await loadSecretsByAdminKey(adminKey);
     const client = new Client({ channelAccessToken, channelSecret });
 
+    // push の前で
+    try {
+      await client.getProfile(userId);
+    } catch (e: any) {
+      console.error("getProfile failed (not friend / wrong channel):",
+        e?.originalError?.response?.data || e?.message);
+      return fail(req, { success: false, code: "NOT_FRIEND_OR_WRONG_UID" }, 409);
+    }
     // 送信
     if (type === "card" && formUrl) {
       const flex = buildFlexCard(formUrl, title, desc);
@@ -169,7 +228,6 @@ export async function POST(req: NextRequest) {
         await client.pushMessage(userId, flex);
         return ok(req, { success: true });
       } catch (err: any) {
-        // LINEのエラー本文をそのまま返す（デバッグしやすく）
         const detail =
           err?.originalError?.response?.data ??
           err?.response?.data ??
@@ -184,8 +242,7 @@ export async function POST(req: NextRequest) {
         return fail(req, { success: false, code: "LINE_400", detail }, 400);
       }
     }
-
-    if (!message) return fail(req, { success: false, code: "NO_MESSAGE", message: "message is required (for text type)" }, 400);
+    if (!message) return fail(req, { success: false, code: "NO_MESSAGE" }, 400);
     await client.pushMessage(userId, { type: "text", text: message });
     return ok(req, { success: true });
   } catch (error: any) {
@@ -198,32 +255,10 @@ export async function POST(req: NextRequest) {
       LID_DISABLED: "LID_DISABLED",
       LID_EXPIRED: "LID_EXPIRED",
       SIG_INVALID: "SIG_INVALID",
+      BAD_BASIC_ID: "BAD_BASIC_ID",
     } as const;
     const code = map[error?.message as keyof typeof map] ?? "SEND_FAILED";
     console.error("❌ /api/line failed:", { code, status, detail: String(error?.message ?? error) });
-    return fail(
-      req,
-      {
-        success: false,
-        code,
-        message:
-          code === "NO_ADMIN_ID"
-            ? "Admin not specified (signed params, lid, or login cookie required)"
-            : code === "NO_SECRETS_DOC"
-              ? "No LINE credentials registered for the admin."
-              : code === "INVALID_SECRETS_DOC"
-                ? "Broken LINE credentials document."
-                : code === "LID_NOT_FOUND"
-                  ? "Short link not found."
-                  : code === "LID_DISABLED"
-                    ? "Short link disabled."
-                    : code === "LID_EXPIRED"
-                      ? "Short link expired."
-                      : code === "SIG_INVALID"
-                        ? "Signed params invalid."
-                        : "Failed to send message",
-      },
-      status,
-    );
+    return fail(req, { success: false, code }, status);
   }
 }

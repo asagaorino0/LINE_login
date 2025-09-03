@@ -1,169 +1,87 @@
-// app/api/line-secrets/route.ts
-import { NextRequest } from "next/server";
-import { cookies } from "next/headers";
-import {
-  getLineSecretsByIdContainer,
-  ensureLineSecretsByIdContainer,
-} from "@/lib/cosmos";
-import { seal, open, fingerprint } from "@/lib/crypto/seal";
-import type { EncPack } from "@/lib/crypto/seal";
-
 export const runtime = "nodejs";
 
-// 送信ペイロード（lineUserId や shopId は不要）
-type Payload = {
-  liffId?: string;
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { getLineSecretsByIdContainer } from "@/lib/cosmos";
+import { seal, open } from "@/lib/crypto/seal";
+import type { EncPack } from "@/lib/crypto/seal";
+
+/** ====== types ====== */
+type SecretsDoc = {
+  id: string;            // 主キー (例: "Uxxxx#@basic_id" / 旧: "Uxxxx")
+  aid: string;           // 管理者のLINE UID
+  basicId?: string | null;
+  channelName?: string | null;
+  enc: EncPack;          // { channelSecret, channelAccessToken, liffId } を暗号化
+  createdAt: number;
+  updatedAt: number;
+};
+
+type SaveBody = {
+  // 既存変更: 基本的には basicId と channelName で識別しやすく
+  basicId?: string | null;           // 例: "@abcd1234"（ボットのベーシックID）
+  channelName?: string | null;       // 例: 管理画面表示用の任意名
   channelSecret: string;
   channelAccessToken: string;
+  liffId?: string | null;
+  // 既存アイテム更新用（省略時は aid + basicId で新規Upsert）
+  id?: string;
 };
 
-type Doc = {
-  id: string;             // = 管理者の UID（cookieの uid）
-  enc: EncPack;           // 暗号化済みブロブ
-  rotation: number;
-  createdAt: string;
-  updatedAt: string;
-  createdBy?: string | null;
-  updatedBy?: string | null;
-};
-
-const requireAdmin = async () => {
-  const store = await cookies();
-  const isAdmin = store.get("admin")?.value === "1";
-  if (!isAdmin) throw new Response("Forbidden", { status: 403 });
-};
-
-const originCheck = (req: NextRequest) => {
-  const allowed = process.env.ALLOWED_ORIGIN;
-  if (!allowed) return;
-  const origin = req.headers.get("origin");
-  if (origin && origin !== allowed) throw new Response("Bad Origin", { status: 403 });
-};
-
-const json = (body: any, init?: ResponseInit) => Response.json(body, init);
-
-/* CORS が必要なら */
-export async function OPTIONS(req: NextRequest) {
-  const origin = req.headers.get("origin") ?? "*";
-  return new Response(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": origin,
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Credentials": "true",
-    },
-  });
+/** ====== helpers ====== */
+function unauthorized() {
+  return NextResponse.json({ ok: false, code: "NO_ADMIN_ID" }, { status: 401 });
 }
-
-export async function GET(req: NextRequest) {
-  await requireAdmin();
-  originCheck(req);
-
-  if (process.env.NODE_ENV !== "production") {
-    await ensureLineSecretsByIdContainer().catch(() => { });
-  }
-
-  const store = await cookies();
-  const uid = store.get("uid")?.value ?? "";     // ★ id は管理者のUID
-  if (!uid) return json({ exists: false });
-
-  const c = getLineSecretsByIdContainer();
-  try {
-    const { resource } = await c.item(uid, uid).read<Doc>();
-    if (!resource) return json({ exists: false });
-
-    let fp = null;
-    try {
-      const obj = open(resource.enc) as {
-        liffId?: string;
-        channelSecret: string;
-        channelAccessToken: string;
-      };
-      fp = {
-        liffId: obj.liffId ? fingerprint(obj.liffId) : undefined,
-        channelSecret: fingerprint(obj.channelSecret),
-        channelAccessToken: fingerprint(obj.channelAccessToken),
-      };
-    } catch { }
-
-    return json({
-      exists: true,
-      updatedAt: resource.updatedAt,
-      rotation: resource.rotation,
-      fingerprints: fp,
-    });
-  } catch (e: any) {
-    if (e?.code === 404) return json({ exists: false });
-    console.error("[line-secrets][GET]", e);
-    return json({ ok: false }, { status: 500 });
-  }
+const ok = (body: any, init?: number) => NextResponse.json(body, { status: init ?? 200 });
+/** aid は cookie(uid) から取得（管理UIは /api/line-admin で先にセット） */
+async function getAidFromCookie(): Promise<string | null> {
+  const jar = await cookies();
+  return jar.get("uid")?.value ?? null;
 }
+/** ====== GET ======
 
+/** ====== POST ======
+ * 新規/更新（id が無い場合は aid + basicId で新規 upsert）
+ */
 export async function POST(req: NextRequest) {
-  await requireAdmin();
-  originCheck(req);
-
-  if (process.env.NODE_ENV !== "production") {
-    await ensureLineSecretsByIdContainer().catch(() => { });
-  }
-
-  let body: Payload;
   try {
-    body = await req.json();
-  } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    const aid = await getAidFromCookie();
+    if (!aid) return unauthorized();
+    const body = (await req.json()) as SaveBody;
+    if (!body.channelAccessToken || !body.channelSecret) {
+      return NextResponse.json({ ok: false, code: "MISSING_FIELDS" }, { status: 400 });
+    }
+    // ▼ 正規化（"xxxx" → "@xxxx"）
+    console.log(body.liffId)
+    let basicId =
+      body.liffId && body.liffId.trim()
+        ? (body.liffId.trim().startsWith("@") ? body.liffId.trim() : `@${body.liffId.trim()}`)
+        : null;
+    // 複数公式LINEに対応するなら basicId は必須にする方が安全
+    if (!basicId) {
+      return NextResponse.json({ ok: false, code: "BASIC_ID_REQUIRED" }, { status: 400 });
+    }
+    const now = Date.now();
+    const id = body.id ?? `${aid}|${basicId}`;   // ← id を aid#@basicId に固定
+    const enc = seal({
+      channelAccessToken: body.channelAccessToken,
+      channelSecret: body.channelSecret,
+      liffId: body.liffId ?? null,
+    });
+    const doc: SecretsDoc = {
+      id,
+      aid,
+      basicId,                                  // ← ここに確実に @付きで入る
+      channelName: body.channelName ?? null,
+      enc,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await getLineSecretsByIdContainer().items.upsert(doc);
+    return NextResponse.json({ ok: true, id });
+  } catch (e) {
+    console.error("❌ POST /api/line-secrets failed:", e);
+    return NextResponse.json({ ok: false, code: "LINE_SECRETS_SAVE_FAILED" }, { status: 500 });
   }
-
-  const channelSecret = (body.channelSecret || "").trim();
-  const channelAccessToken = (body.channelAccessToken || "").trim();
-  const liffId = (body.liffId || "").trim() || undefined;
-
-  if (!channelSecret || !channelAccessToken) {
-    return new Response("channelSecret and channelAccessToken are required", { status: 400 });
-  }
-
-  const store = await cookies();
-  const uid = store.get("uid")?.value ?? null;   // ★ これを id に使う
-  if (!uid) return new Response("No admin uid", { status: 401 });
-
-  const pack = seal({
-    liffId,
-    channelSecret,
-    channelAccessToken,
-  });
-
-  const id = uid;
-  const now = new Date().toISOString();
-  const c = getLineSecretsByIdContainer();
-
-  // rotation 継承
-  let rotation = 0;
-  try {
-    const { resource } = await c.item(id, id).read<Doc>();
-    if (resource) rotation = (resource.rotation ?? 0) + 1;
-  } catch { }
-
-  const doc: Doc = {
-    id,                 // = 管理者UID
-    enc: pack,
-    rotation,
-    createdAt: now,
-    updatedAt: now,
-    createdBy: rotation === 0 ? uid : undefined,
-    updatedBy: uid,
-  };
-
-  await c.items.upsert(doc);
-
-  return json({
-    ok: true,
-    updatedAt: now,
-    rotation,
-    fingerprints: {
-      liffId: liffId ? fingerprint(liffId) : undefined,
-      channelSecret: fingerprint(channelSecret),
-      channelAccessToken: fingerprint(channelAccessToken),
-    },
-  });
 }
+

@@ -14,6 +14,15 @@ import { liffManager, LiffProfile } from '@/lib/liff';
 import HomeClient from './(public)/HomeClient';
 
 export default function Home() {
+  type Account = {
+    basicId: string;            // ここは必ず string（空文字を許容）にする
+    channelName?: string;
+    channelId?: string;
+  };
+
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedBasicId, setSelectedBasicId] = useState<string>("");
+
   // ---- state -------------------------------------------------------------
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -38,6 +47,7 @@ export default function Home() {
 
   // 署名付きリンク（配布用）
   const [signedLink, setSignedLink] = useState<string>("");
+  const [basicId, setBasicId] = useState<string>("");
 
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
@@ -47,6 +57,40 @@ export default function Home() {
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
 
   // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
+  // 管理者ログイン後 or isAdmin 有効時に取得
+  useEffect(() => {
+    if (!isAdmin) return;
+    let aborted = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
+        const j = await r.json();
+        if (aborted) return;
+        // 安全に配列化
+        const raw = Array.isArray(j?.items) ? j.items : [];
+        // 正規化：basicId は常に string にし、未定義は除外
+        const normalized: Account[] = raw
+          .map((a: any): Account => ({
+            basicId: typeof a?.basicId === "string" ? a.basicId : "",
+            channelName: typeof a?.channelName === "string" ? a.channelName : undefined,
+            channelId: typeof a?.channelId === "string" ? a.channelId : undefined,
+          }))
+          .filter((a: { basicId: string; }) => a.basicId !== ""); // 空のものは使わない
+        setAccounts(normalized);
+        setBasicId(normalized[0].basicId)
+        console.log(normalized, normalized[0].basicId)
+        // 初期選択（選択済みがなければ先頭 or 空文字）
+        setSelectedBasicId(prev => prev || (normalized[0]?.basicId ?? ""));
+      } catch {
+        if (!aborted) {
+          setAccounts([]);
+          setSelectedBasicId("");
+        }
+      }
+    })();
+    return () => { aborted = true; };
+  }, [isAdmin]);
+
   useEffect(() => {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
       .then(r => r.json())
@@ -84,27 +128,6 @@ export default function Home() {
     if (notifyParam === "1") setNotifyEnabled(true);
   }, []);
 
-  // useEffect(() => {
-  //   const params = new URLSearchParams(window.location.search);
-  //   const formParam = params.get('form');
-  //   const notifyParam = params.get('notify');
-
-  //   if (formParam) {
-  //     try {
-  //       const decoded = decodeURIComponent(formParam);
-  //       setFormUrl(decoded);
-  //       setIsAutoMode(true);
-  //       autoTriggeredRef.current = false;
-  //       messageSentRef.current = false;
-  //       navigatedRef.current = false;
-  //       console.log('[auto] activated with form:', decoded);
-  //     } catch (e) {
-  //       console.error('Failed to parse URL parameters:', e);
-  //     }
-  //   }
-  //   if (notifyParam === '0') setNotifyEnabled(false);
-  //   if (notifyParam === '1') setNotifyEnabled(true);
-  // }, []);
 
   // ---- LIFF init ---------------------------------------------------------
   useEffect(() => {
@@ -226,7 +249,6 @@ export default function Home() {
       setError("管理者ログインに失敗しました。もう一度お試しください。");
     },
   });
-
   const handleAdminLogin = () => {
     if (!adminLoginMutation.isPending) {
       setError(null);
@@ -247,18 +269,15 @@ export default function Home() {
 
     try {
       const normalized = viewUrlNormalized;
-
       // 1) URL正規化 & 質問ID検出（タイトル/説明も取得）
-      let titleToSave = formTitle;
-      let descToSave = formDescription;
+      //    ← ここをローカル変数に保持し、POSTにも同じ値を使う
+      let titleToSave = formTitle || "Googleフォーム";
+      let descToSave = formDescription || "リンクを開くにはこちらをタップ";
 
       const result = await GoogleFormsManager.detectEntryIds(normalized).catch(() => null);
       if (result?.success) {
         if (result.title) titleToSave = result.title;
         if (result.description) descToSave = result.description;
-
-        setFormTitle(titleToSave);
-        setFormDescription(descToSave);
 
         setDetectedEntries({ userId: result.userId, message: result.message });
         if (result.userId) {
@@ -267,24 +286,27 @@ export default function Home() {
       } else if (result && !result.success) {
         showToast(`検出に失敗しました: ${result.error}`, 'error');
       }
+      // 画面表示用の state 更新（POST には使わない）
+      setFormTitle(titleToSave);
+      setFormDescription(descToSave);
 
-      // 2) サーバに署名付きリンクを作らせる（title/desc を保存）
+      // 2) サーバに署名付きリンクを作らせる（★ ローカル変数を渡す）
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // cookie.uid 利用
+        credentials: "include",
         body: JSON.stringify({
           form: normalized,
           title: titleToSave,
           desc: descToSave,
           notify: notifyEnabled ? 1 : 0,
+          basicId: selectedBasicId || basicId,
         }),
       });
 
       const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.code || `links-create failed (${r.status})`);
-
-      setSignedLink(j.link); // => https://.../open?lid=xxxx
+      if (!r.ok || !j?.ok) throw new Error(j?.code || "links-create failed");
+      setSignedLink(j.link);
       showToast('連携リンクを生成しました', 'success');
     } catch (e) {
       console.error("generate link failed:", e);
@@ -370,9 +392,6 @@ export default function Home() {
         desc: formDescription || "フォームに回答してください。", // ← 追加
         ...(lid ? { lid } : { aid, formId, exp, sig }),
       };
-
-
-      // app/page.tsx の sendLineMessageAndOpenForm 内、送信部分をこれに置換
       try {
         let sent = false;
         if ("sendBeacon" in navigator) {
@@ -468,7 +487,7 @@ export default function Home() {
             isGeneratingUrl ? (
               <div className="text-center">
                 <h3 className="text-base font-semibold">
-                  <span className="text-blue-600">URLを生成中...</span>
+                  <span className="text-blue-600">フォームへ移動中...</span>
                 </h3>
               </div>
             ) : (
@@ -574,6 +593,27 @@ export default function Home() {
                         <div className="text-xs text-gray-500 space-y-1 mb-2">
                           <div>LIFF UID: {userProfile?.userId ?? "—(未ログイン)"}</div>
                           <div>cookie uid: {cookieInfo?.hasUid ? cookieInfo.uidMasked : "—(未セット)"}</div>
+                        </div>
+                        {/* 管理者モードのフォーム内 どこか適切な場所に */}
+                        <div className="mt-3">
+                          <label className="text-sm text-gray-700">送信に使う公式LINE</label>
+                          <select
+                            value={selectedBasicId}                             // "" or "@xxxx"
+                            onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value) }}
+                          >
+                            {!accounts.length && <option value="">（未登録）</option>}
+                            {accounts.map(a => (
+                              <option key={a.basicId} value={a.basicId}>
+                                {(a.channelName || a.basicId)}
+                                {/* （{a.basicId}） */}
+                              </option>
+                            ))}
+                          </select>
+                          {!accounts.length && (
+                            <p className="text-xs text-amber-700 mt-1">
+                              まず「管理者としてログイン」→ 設定ページで資格を登録してください。
+                            </p>
+                          )}
                         </div>
                       </div>
 
