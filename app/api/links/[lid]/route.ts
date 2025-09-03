@@ -31,6 +31,7 @@
 //   }
 // }
 // app/api/links/[lid]/route.ts
+// app/api/links/[lid]/route.ts
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
@@ -56,12 +57,9 @@ const fail = (req: Request, body: any, status = 500) =>
   NextResponse.json(body, { status, headers: cors(req) });
 
 /* ---- GET /api/links/:lid ---- */
-export async function GET(
-  req: Request,
-  { params }: { params: { lid: string } }   // ← ここが正しい型
-) {
+export async function GET(req: Request, ctx: any) {
   try {
-    const lid = params.lid;
+    const lid: string | undefined = ctx?.params?.lid;
     if (!lid) return fail(req, { ok: false, code: "NO_LID" }, 400);
 
     const { resource } = await getLinksByIdContainer()
@@ -102,4 +100,5 @@ export async function GET(
     return fail(req, { ok: false, code: err?.message || "LINKS_READ_FAILED" }, status);
   }
 }
+
 
