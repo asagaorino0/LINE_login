@@ -34,11 +34,20 @@ type Body = {
 };
 
 // e パターンを想定（必要なら /d/ の分岐も足せます）
-const FORM_ID_RE = /\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//;
+// const FORM_ID_RE = /\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//;
+// e の有無どちらでもキャプチャ
+const FORM_ID_RE = /\/forms\/d\/(?:e\/)?([a-zA-Z0-9_-]+)\//;
+
 function extractFormId(formUrl: string): string | null {
+  try { formUrl = decodeURIComponent(formUrl); } catch { }
   const m = formUrl.match(FORM_ID_RE);
   return m ? m[1] : null;
 }
+
+// function extractFormId(formUrl: string): string | null {
+//   const m = formUrl.match(FORM_ID_RE);
+//   return m ? m[1] : null;
+// }
 
 /* ---------- 公開URLの推定（これを使う） ---------- */
 function getPublicOrigin(req: NextRequest): string {
