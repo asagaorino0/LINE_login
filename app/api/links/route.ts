@@ -33,21 +33,12 @@ type Body = {
   expiresAt?: number | 0;     // UNIX秒。0 or 未指定なら無期限
 };
 
-// e パターンを想定（必要なら /d/ の分岐も足せます）
-// const FORM_ID_RE = /\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//;
-// e の有無どちらでもキャプチャ
-const FORM_ID_RE = /\/forms\/d\/(?:e\/)?([a-zA-Z0-9_-]+)\//;
-
 function extractFormId(formUrl: string): string | null {
   try { formUrl = decodeURIComponent(formUrl); } catch { }
-  const m = formUrl.match(FORM_ID_RE);
+  const m = formUrl.match(/(1FAIpQL[0-9A-Za-z_-]+)/);
   return m ? m[1] : null;
 }
 
-// function extractFormId(formUrl: string): string | null {
-//   const m = formUrl.match(FORM_ID_RE);
-//   return m ? m[1] : null;
-// }
 
 /* ---------- 公開URLの推定（これを使う） ---------- */
 function getPublicOrigin(req: NextRequest): string {
