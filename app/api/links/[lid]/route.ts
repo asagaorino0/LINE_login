@@ -97,27 +97,35 @@
 //     return fail(req, { ok: false, code: err?.message || "LINKS_READ_FAILED" }, status);
 //   }
 // }
+
 // app/api/links/[lid]/route.ts
 export const runtime = "nodejs";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
-export async function GET(_req: NextRequest, { params }: { params: any }) {
+export async function GET(_req: Request, context: any) {
   try {
-    const lid = params?.lid?.trim();
-    if (!lid) return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
+    const lid = (context?.params?.lid ?? "").trim();
+    if (!lid) {
+      return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
+    }
 
     const { resource } = await getLinksByIdContainer().item(lid, lid).read<any>();
-    if (!resource) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
+    if (!resource) {
+      return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
+    }
 
-    // 必要な最小限を返す
     const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt } = resource;
-    return NextResponse.json({ ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt });
+    return NextResponse.json(
+      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt },
+      { status: 200 }
+    );
   } catch (e) {
     return NextResponse.json({ ok: false, code: "LINKS_READ_FAILED" }, { status: 500 });
   }
 }
+
 
 
 
