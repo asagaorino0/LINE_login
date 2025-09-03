@@ -103,7 +103,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
-export async function GET(_req: NextRequest, { params }: { params: { lid: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: any }) {
   try {
     const lid = params?.lid?.trim();
     if (!lid) return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });

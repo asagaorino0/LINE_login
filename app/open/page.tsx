@@ -5,7 +5,7 @@ import OpenFormClient from "./OpenFormClient";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
 // OGP をサーバーで生成（JS不要）
-export async function generateMetadata({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
+export async function generateMetadata({ searchParams }: { searchParams: any }) {
   const sp = await searchParams;
   const lid = (sp.lid || "").trim();
   let title = sp.title || "Googleフォーム";
