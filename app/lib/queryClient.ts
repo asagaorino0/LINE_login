@@ -66,7 +66,6 @@ export async function apiRequest(
 ): Promise<Response> {
   const fullUrl = joinUrl(API_BASE_URL, url);
   console.log(`🌐 ${method} ${fullUrl}`);
-
   const controller = new AbortController();
   const timeoutId =
     init?.timeoutMs && init.timeoutMs > 0
