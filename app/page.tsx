@@ -291,7 +291,9 @@ export default function Home() {
       setFormDescription(descToSave);
 
       // 2) サーバに署名付きリンクを作らせる（★ ローカル変数を渡す）
-      const r = await fetch("/api/links", {
+      // const r = await fetch("/api/links", {
+
+      const r = await fetch("/api/make-link", {////試し
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
