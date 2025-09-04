@@ -98,7 +98,7 @@ export default function Home() {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
       .then(r => r.json())
       .then(j => setCookieInfo(j))
-    // .catch(() => setCookieInfo(null));
+      .catch(() => setCookieInfo(null));
   }, [isLoggedIn, isAdmin]);
 
   // 初回ロードで lid を解決
