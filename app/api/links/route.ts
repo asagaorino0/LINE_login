@@ -1,9 +1,9 @@
 //app/api/links/route.ts
+// app/api/links/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import crypto from "crypto";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
@@ -25,84 +25,78 @@ function getPublicOrigin(req: NextRequest) {
   return `${proto}://${host}`;
 }
 
-type Body = {
-  form?: string;
-  title?: string | null;
-  desc?: string | null;
-  notify?: number | boolean;
-  basicId?: string | null;
-  expiresAt?: number | 0;
-  aid: string | null
-};
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const form = String(body.form ?? "");
-    const notify = !!body.notify;
-    const aid = typeof body.aid === "string" ? body.aid : null;
-    const rawBasicId = typeof body.basicId === "string" ? body.basicId.trim() : "";
 
-    // ★ aid のチェックログ
-    if (aid) {
-      console.info("[/api/links] aid 受信 OK:", aid);
-    } else {
-      console.error("[/api/links] aid が undefined/null です ❌ body.aid=", body.aid);
-    }
+    // ★ 受信ボディを型付きで整える（ここで “undefined” を潰す）
+    const form = typeof body.form === "string" ? body.form : "";
+    const title = typeof body.title === "string" ? body.title : ""; // ← 必須stringなら空文字に
+    const desc = typeof body.desc === "string" ? body.desc : ""; // ← 同上
+    const notify = body.notify ? 1 : 0; // number|boolean混在対策
+    const aid = typeof body.aid === "string" ? body.aid : "";       // ← 必須string
+    const basicIdRaw = typeof body.basicId === "string" ? body.basicId.trim() : "";
 
+    // ★ ここで「何がどう来てるか」を必ずログ
     console.info("[/api/links] recv", {
-      hasForm: !!form,
-      notify,
-      aidType: typeof aid,
-      hasAid: !!aid,
-      aid,
-      rawBasicId,
+      keys: Object.keys(body),
+      formType: typeof body.form, hasForm: !!form,
+      titleType: typeof body.title, hasTitle: title.length > 0,
+      descType: typeof body.desc, hasDesc: desc.length > 0,
+      notifyRaw: body.notify, notify,
+      aidType: typeof body.aid, hasAid: !!aid, aidMasked: aid ? aid.slice(0, 6) + "…" : null,
+      basicIdType: typeof body.basicId, basicIdRaw,
     });
 
+    // ここからバリデーション（常に code を返す）
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
     if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
-
     if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
 
-    // basicId の扱いを notify に応じて分岐
+    // notify=1 のときだけ basicId 必須／notify=0 のときは不要
     let normBasicId: string | null = null;
     if (notify) {
-      // 通知ON → basicId 必須
-      if (typeof body.basicId !== "string" || !body.basicId.trim()) {
+      if (!basicIdRaw) {
         return fail(req, { ok: false, code: "NO_BASIC_ID" }, 400);
       }
-      normBasicId = body.basicId.trim().startsWith("@")
-        ? body.basicId.trim()
-        : `@${body.basicId.trim()}`;
-    } else {
-      // 通知OFF → basicId は不要
-      normBasicId = null;
+      normBasicId = basicIdRaw.startsWith("@") ? basicIdRaw : `@${basicIdRaw}`;
     }
 
     const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
     const now = Math.floor(Date.now() / 1000);
 
-    await getLinksByIdContainer().items.upsert({
+    // 保存するデータ（optionalは“あるときだけ”入れる）
+    const item: any = {
       id: lid,
       aid,
-      basicId: normBasicId,   // 通知OFFなら null
       formUrl: form,
-      formId: body.formId,
-      title: body.title ?? null,
-      desc: body.desc ?? null,
-      notify: notify ? 1 : 0,
+      formId,
+      notify,
       createdAt: now,
       expiresAt: Number(body.expiresAt || 0) || 0,
-    });
+      title, // 空文字でもstringなので Zod "string required" で落ちにくい
+      desc,
+    };
+    if (normBasicId) item.basicId = normBasicId;
+
+    await getLinksByIdContainer().items.upsert(item);
+
+    console.info("[links:create] ok lid=%s aid=%s", lid, aid.slice(0, 6) + "…");
 
     const origin = getPublicOrigin(req);
     return ok(req, { ok: true, link: `${origin}/open?lid=${lid}`, lid }, 201);
   } catch (e: any) {
+    // Zodなどのバリデーションエラーを“見える化”
+    if (e?.errors && Array.isArray(e.errors)) {
+      console.error("❌ /api/links zod-error", e.errors);
+      return fail(req, { ok: false, code: "INVALID_USER_DATA", errors: e.errors }, 400);
+    }
     console.error("❌ /api/links failed:", e);
     return fail(req, { ok: false, code: "LINKS_CREATE_FAILED" }, 500);
   }
 }
+
 
 
 // export async function POST(req: NextRequest) {
