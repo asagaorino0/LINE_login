@@ -340,13 +340,23 @@ export default function Home() {
       // }
 
       // ここで payload を“undefined を含めない形”で組み立て
-      const payload: any = {
+      const payload = {
         form: normalized,
-        title: String(titleToSave ?? ""),   // サーバで必須なら空文字にしておく
+        title: String(titleToSave ?? ""),
         desc: String(descToSave ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        aid: userProfile.userId,            // ここは必ず string
+        aid: userProfile?.userId ?? null,
+        ...(notifyEnabled ? { basicId: (selectedBasicId || basicId || "").trim() } : {}),
       };
+
+      console.info("[handleGenerateLink] payload to /api/links:", payload);
+
+      // const r = await fetch("/api/links", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify(payload),
+      // });
+
 
       // ★ notifyEnabled が ON のときだけ basicId を追加する
       if (notifyEnabled) {
