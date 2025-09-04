@@ -40,55 +40,49 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Body;
     const { form, title, desc, notify, basicId, expiresAt, aid } = body;
 
-    // ★まず見えるログ
-    console.info("[/api/links] body", {
-      hasForm: !!form,
-      formId: extractFormId(String(form ?? "")),
-      typeofAid: typeof aid, aid,
-      typeofBasicId: typeof basicId, basicId,
-      typeofTitle: typeof title, typeofDesc: typeof desc,
-    });
-
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
     if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
 
-    // クッキー使わないので cookies() は削除してOK
+    if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
 
-    // aid を必須にするならここで確定チェック
-    if (typeof aid !== "string" || !aid) {
-      return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
+    // basicId の扱いを notify に応じて分岐
+    let normBasicId: string | null = null;
+    if (notify) {
+      // 通知ON → basicId 必須
+      if (typeof basicId !== "string" || !basicId.trim()) {
+        return fail(req, { ok: false, code: "NO_BASIC_ID" }, 400);
+      }
+      normBasicId = basicId.trim().startsWith("@")
+        ? basicId.trim()
+        : `@${basicId.trim()}`;
+    } else {
+      // 通知OFF → basicId は不要
+      normBasicId = null;
     }
 
-    // basicId を“任意”にする実装（必須なら if (!basicId) fail する）
-    const normBasicId =
-      typeof basicId === "string" && basicId.trim()
-        ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
-        : undefined; // ← undefined にして“項目自体を保存しない”方がZodに優しい
+    const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+    const now = Math.floor(Date.now() / 1000);
 
-    // 保存ペイロードを“あるものだけ”詰める
-    const item: any = {
-      id: crypto.randomUUID().replace(/-/g, "").slice(0, 20),
-      aid,                              // 必須 string
-      formUrl: form,                    // 必須 string
-      formId,                           // 必須 string
+    await getLinksByIdContainer().items.upsert({
+      id: lid,
+      aid,
+      basicId: normBasicId,   // 通知OFFなら null
+      formUrl: form,
+      formId,
+      title: title ?? null,
+      desc: desc ?? null,
       notify: notify ? 1 : 0,
-      createdAt: Math.floor(Date.now() / 1000),
+      createdAt: now,
       expiresAt: Number(expiresAt || 0) || 0,
-    };
-    if (typeof title === "string") item.title = title;
-    if (typeof desc === "string") item.desc = desc;
-    if (normBasicId) item.basicId = normBasicId;
-
-    await getLinksByIdContainer().items.upsert(item);
-
-    console.info("[links:create] ok lid=%s aid=%s", item.id, aid.slice(0, 6) + "…");
+    });
 
     const origin = getPublicOrigin(req);
-    return ok(req, { ok: true, link: `${origin}/open?lid=${item.id}`, lid: item.id }, 201);
+    return ok(req, { ok: true, link: `${origin}/open?lid=${lid}`, lid }, 201);
   } catch (e: any) {
     console.error("❌ /api/links failed:", e);
     return fail(req, { ok: false, code: "LINKS_CREATE_FAILED" }, 500);
   }
 }
+
 
