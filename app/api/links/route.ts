@@ -29,44 +29,60 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ★ 受信ボディを型付きで整える（ここで “undefined” を潰す）
+    // --- 受信内容の見える化（確実にログを出す）---
     const form = typeof body.form === "string" ? body.form : "";
-    const title = typeof body.title === "string" ? body.title : ""; // ← 必須stringなら空文字に
-    const desc = typeof body.desc === "string" ? body.desc : ""; // ← 同上
-    const notify = body.notify ? 1 : 0; // number|boolean混在対策
-    const aid = typeof body.aid === "string" ? body.aid : "";       // ← 必須string
-    const basicIdRaw = typeof body.basicId === "string" ? body.basicId.trim() : "";
+    const title = typeof body.title === "string" ? body.title : "";
+    const desc = typeof body.desc === "string" ? body.desc : "";
+    const notify = body.notify ? 1 : 0;
+    const aid = typeof body.aid === "string" ? body.aid : "";
+    const basicIdIn = typeof body.basicId === "string" ? body.basicId.trim() : "";
 
-    // ★ ここで「何がどう来てるか」を必ずログ
     console.info("[/api/links] recv", {
       keys: Object.keys(body),
-      formType: typeof body.form, hasForm: !!form,
-      titleType: typeof body.title, hasTitle: title.length > 0,
-      descType: typeof body.desc, hasDesc: desc.length > 0,
-      notifyRaw: body.notify, notify,
-      aidType: typeof body.aid, hasAid: !!aid, aidMasked: aid ? aid.slice(0, 6) + "…" : null,
-      basicIdType: typeof body.basicId, basicIdRaw,
+      types: {
+        form: typeof body.form, title: typeof body.title, desc: typeof body.desc,
+        notify: typeof body.notify, aid: typeof body.aid, basicId: typeof body.basicId,
+      },
+      values: {
+        hasForm: !!form,
+        hasTitle: !!title,
+        hasDesc: !!desc,
+        notify,
+        hasAid: !!aid,
+        aidMasked: aid ? aid.slice(0, 6) + "…" : null,
+        basicIdIn,
+      },
     });
 
-    // ここからバリデーション（常に code を返す）
-    if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
+    // --- 早期バリデーション（必ず code を付ける＋ログも出す）---
+    if (!form) {
+      console.warn("[/api/links] NO_FORM");
+      return NextResponse.json({ ok: false, code: "NO_FORM" }, { status: 400 });
+    }
     const formId = extractFormId(form);
-    if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
-    if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
-
-    // notify=1 のときだけ basicId 必須／notify=0 のときは不要
-    let normBasicId: string | null = null;
-    if (notify) {
-      if (!basicIdRaw) {
-        return fail(req, { ok: false, code: "NO_BASIC_ID" }, 400);
-      }
-      normBasicId = basicIdRaw.startsWith("@") ? basicIdRaw : `@${basicIdRaw}`;
+    if (!formId) {
+      console.warn("[/api/links] BAD_FORM_URL", { form });
+      return NextResponse.json({ ok: false, code: "BAD_FORM_URL" }, { status: 400 });
+    }
+    if (!aid) {
+      console.warn("[/api/links] NO_ADMIN_ID");
+      return NextResponse.json({ ok: false, code: "NO_ADMIN_ID" }, { status: 401 });
     }
 
+    // notify=1 のときだけ basicId 必須
+    let normBasicId: string | null = null;
+    if (notify) {
+      if (!basicIdIn) {
+        console.warn("[/api/links] NO_BASIC_ID (notify=1)");
+        return NextResponse.json({ ok: false, code: "NO_BASIC_ID" }, { status: 400 });
+      }
+      normBasicId = basicIdIn.startsWith("@") ? basicIdIn : `@${basicIdIn}`;
+    }
+
+    // --- ここから保存 ---
     const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
     const now = Math.floor(Date.now() / 1000);
 
-    // 保存するデータ（optionalは“あるときだけ”入れる）
     const item: any = {
       id: lid,
       aid,
@@ -75,18 +91,21 @@ export async function POST(req: NextRequest) {
       notify,
       createdAt: now,
       expiresAt: Number(body.expiresAt || 0) || 0,
-      title, // 空文字でもstringなので Zod "string required" で落ちにくい
+      // title/desc が必須stringなら空文字でもOK、厳しければ条件付きで入れる
+      title,
       desc,
     };
     if (normBasicId) item.basicId = normBasicId;
 
     await getLinksByIdContainer().items.upsert(item);
 
-    console.info("[links:create] ok lid=%s aid=%s", lid, aid.slice(0, 6) + "…");
+    console.info("[links:create] ok", { lid, aidMasked: aid.slice(0, 6) + "…" });
 
     const origin = getPublicOrigin(req);
-    return ok(req, { ok: true, link: `${origin}/open?lid=${lid}`, lid }, 201);
+    return NextResponse.json({ ok: true, link: `${origin}/open?lid=${lid}`, lid }, { status: 201 });
+
   } catch (e: any) {
+    // Zod や Cosmos の詳細を必ず返す
     if (e?.errors && Array.isArray(e.errors)) {
       const fields = e.errors.map((er: any) => ({
         path: Array.isArray(er.path) ? er.path.join(".") : String(er.path),
@@ -95,16 +114,13 @@ export async function POST(req: NextRequest) {
         message: er.message,
       }));
       console.error("❌ /api/links validation error", fields);
-      return NextResponse.json(
-        { ok: false, code: "INVALID_USER_DATA", fields },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, code: "INVALID_USER_DATA", fields }, { status: 400 });
     }
-    console.error("❌ /api/links failed:", e);
+    console.error("❌ /api/links failed:", { message: e?.message, code: e?.code, stack: e?.stack });
     return NextResponse.json({ ok: false, code: "LINKS_CREATE_FAILED" }, { status: 500 });
   }
-
 }
+
 
 
 
