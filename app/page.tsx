@@ -303,11 +303,20 @@ export default function Home() {
           basicId: selectedBasicId || basicId,
         }),
       });
-
-      const j = await r.json();
-      if (!r.ok || !j?.ok) throw new Error(j?.code || "links-create failed");
-      setSignedLink(j.link);
-      showToast('連携リンクを生成しました', 'success');
+      // 本文は一度だけ読む
+      const raw = await r.text();
+      let data: any = null;
+      try { data = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
+      if (!r.ok || !data?.ok) {
+        console.error("links-create error:", {
+          status: r.status,
+          code: data?.code ?? "UNKNOWN",
+          detail: data ?? raw,     // JSONならそのオブジェクト、非JSONなら生テキスト
+        });
+        throw new Error(data?.code ?? "links-create failed");
+      }
+      setSignedLink(data.link);
+      showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
       showToast('連携リンク生成でエラーが発生しました', 'error');
