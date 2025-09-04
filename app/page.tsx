@@ -59,6 +59,7 @@ export default function Home() {
   // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
   // 管理者ログイン後 or isAdmin 有効時に取得
   useEffect(() => {
+    handleAdminLogin()
     if (!isAdmin) return;
     let aborted = false;
     (async () => {
