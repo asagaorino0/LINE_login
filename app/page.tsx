@@ -58,6 +58,20 @@ export default function Home() {
 
   // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
   // 管理者ログイン後 or isAdmin 有効時に取得
+  const firedAdminLoginRef = useRef(false);
+
+  useEffect(() => {
+    // userProfile.userId がまだ無い → 何もしない
+    if (!userProfile?.userId) return;
+    // すでに実行済みならスキップ
+    if (firedAdminLoginRef.current) return;
+    firedAdminLoginRef.current = true;
+    // すでに送信中ならスキップ
+    if (adminLoginMutation.isPending) return;
+    // 実行！
+    adminLoginMutation.mutate();
+  }, [userProfile?.userId]);
+
   useEffect(() => {
     if (!isAdmin) return;
     if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
@@ -86,8 +100,6 @@ export default function Home() {
     })();
     return () => { aborted = true; };
   }, [isAdmin, cookieInfo?.hasUid]);
-
-
   useEffect(() => {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
       .then(r => r.json())
@@ -264,7 +276,7 @@ export default function Home() {
       setUserProfile(profile);
       setIsLoggedIn(true);
       setError(null);
-      window.location.href = "/line-settings";
+      // window.location.href = "/line-settings";
     },
     onError: (e) => {
       console.error("Admin login failed:", e);
@@ -668,12 +680,15 @@ export default function Home() {
                               回答通知を受け取るには、公式LINEの設定が必要です
                             </p>
                             <Button
-                              onClick={handleAdminLogin}
+                              onClick={() =>
+                                // handleAdminLogin
+                                window.location.href = "/line-settings"
+                              }
                               disabled={loginMutation.isPending}
                               className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
                               data-testid="button-line-login"
                             >
-                              {loginMutation.isPending ? '認証中...' : '管理者としてログイン'}
+                              {loginMutation.isPending ? '認証中...' : '通知設定画面へ'}
                             </Button>
                           </div>
                         </div>
