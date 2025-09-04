@@ -326,24 +326,35 @@ export default function Home() {
       setFormDescription(descToSave);
       // 2) 署名付きリンク作成 API
       console.log(userProfile?.userId)
+      // 送信直前に
+      if (!userProfile?.userId) {
+        showToast("LINEログイン後にお試しください（userId 未取得）", "error");
+        return;
+      }
+
+      const pickedBasicId = (selectedBasicId || basicId || "").trim();
+      // basicId を必須にしているなら
+      if (!pickedBasicId) {
+        showToast("公式LINE（basicId）を選択してください", "error");
+        return;
+      }
+
+      // ここで payload を“undefined を含めない形”で組み立て
       const payload: any = {
         form: normalized,
-        title: titleToSave,
-        desc: descToSave,
+        title: String(titleToSave ?? ""),   // サーバで必須なら空文字にしておく
+        desc: String(descToSave ?? ""),
         notify: notifyEnabled ? 1 : 0,
+        aid: userProfile.userId,            // ここは必ず string
+        basicId: pickedBasicId,             // 必須なら必ず string
       };
-
-      // basicId が必須なら必ず文字列に
-      payload.basicId = (selectedBasicId || basicId || "").trim();
-
-      // いまの方式を続けるなら（早めにidTokenに移行推奨）
-      payload.aid = userProfile?.userId;
 
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
 
       // const r = await fetch("/api/links", {
       //   method: "POST",
