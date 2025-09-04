@@ -37,18 +37,29 @@ type Body = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, basicId, expiresAt, aid } = (await req.json()) as Body;
+    const body = (await req.json()) as Body;
+    const { form, title, desc, notify, basicId, expiresAt, aid } = body;
+
+    // ★ デバッグログ追加
+    console.info("[/api/links] request body", {
+      form,
+      hasForm: !!form,
+      basicId,
+      aid,
+      typeofAid: typeof aid,
+      typeofBasicId: typeof basicId,
+    });
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
     if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
 
-    // ← ここを await にする
-    const cookieStore = await cookies();
+    // ← cookie はもう使わないなら削除してOK
+    // const cookieStore = await cookies();
     // const aid = cookieStore.get("uid")?.value ?? null;
+
     if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
 
-    // basicId を正規化して @ 付け忘れに対応
     const normBasicId =
       typeof basicId === "string" && basicId.trim()
         ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
@@ -60,7 +71,7 @@ export async function POST(req: NextRequest) {
     await getLinksByIdContainer().items.upsert({
       id: lid,
       aid,
-      basicId: normBasicId,           // ← 修正：正規化した値を保存
+      basicId: normBasicId,
       formUrl: form,
       formId,
       title: title ?? null,

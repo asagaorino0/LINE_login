@@ -326,19 +326,38 @@ export default function Home() {
       setFormDescription(descToSave);
       // 2) 署名付きリンク作成 API
       console.log(userProfile?.userId)
+      const payload: any = {
+        form: normalized,
+        title: titleToSave,
+        desc: descToSave,
+        notify: notifyEnabled ? 1 : 0,
+      };
+
+      // basicId が必須なら必ず文字列に
+      payload.basicId = (selectedBasicId || basicId || "").trim();
+
+      // いまの方式を続けるなら（早めにidTokenに移行推奨）
+      payload.aid = userProfile?.userId;
+
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // ← 本番ドメインの uid クッキーが必須
-        body: JSON.stringify({
-          form: normalized,
-          title: titleToSave,
-          desc: descToSave,
-          notify: notifyEnabled ? 1 : 0,
-          basicId: selectedBasicId || basicId || null,
-          aid: userProfile?.userId
-        }),
+        body: JSON.stringify(payload),
       });
+
+      // const r = await fetch("/api/links", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   credentials: "include", // ← 本番ドメインの uid クッキーが必須
+      //   body: JSON.stringify({
+      //     form: normalized,
+      //     title: titleToSave,
+      //     desc: descToSave,
+      //     notify: notifyEnabled ? 1 : 0,
+      //     basicId: selectedBasicId || basicId || null,
+      //     aid: userProfile?.userId
+      //   }),
+      // });
       // 本文は一度だけ読んで安全に parse
       const raw = await r.text();
       let j: any = null;
