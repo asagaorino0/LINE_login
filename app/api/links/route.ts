@@ -1,3 +1,4 @@
+//app/api/links/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -31,11 +32,12 @@ type Body = {
   notify?: number | boolean;
   basicId?: string | null;
   expiresAt?: number | 0;
+  aid: string | null
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, basicId, expiresAt } = (await req.json()) as Body;
+    const { form, title, desc, notify, basicId, expiresAt, aid } = (await req.json()) as Body;
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     // ← ここを await にする
     const cookieStore = await cookies();
-    const aid = cookieStore.get("uid")?.value ?? null;
+    // const aid = cookieStore.get("uid")?.value ?? null;
     if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
 
     // basicId を正規化して @ 付け忘れに対応

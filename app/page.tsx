@@ -300,24 +300,20 @@ export default function Home() {
       showToast("フォームURLを先に入力してください", "error");
       return;
     }
-
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
     setSignedLink("");
-
     try {
       // 1) URL正規化 & 質問ID検出（タイトル/説明も取得）
       const normalized = viewUrlNormalized;
       let titleToSave = formTitle || "Googleフォーム";
       let descToSave = formDescription || "リンクを開くにはこちらをタップ";
-
       // 失敗しても致命的ではないので .catch(() => null)
       const result = await GoogleFormsManager.detectEntryIds(normalized).catch(() => null);
       if (result?.success) {
         if (result.title) titleToSave = result.title;
         if (result.description) descToSave = result.description;
-
         setDetectedEntries({ userId: result.userId, message: result.message });
         if (result.userId) {
           setLastDetectionResult({ userId: result.userId, message: result.message, formUrl: normalized });
@@ -325,12 +321,11 @@ export default function Home() {
       } else if (result && !result.success) {
         showToast(`検出に失敗しました: ${result.error}`, "error");
       }
-
       // 画面表示用 state 更新（※POST に使う値は上のローカル変数を送る）
       setFormTitle(titleToSave);
       setFormDescription(descToSave);
-
       // 2) 署名付きリンク作成 API
+      console.log(userProfile?.userId)
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -341,19 +336,17 @@ export default function Home() {
           desc: descToSave,
           notify: notifyEnabled ? 1 : 0,
           basicId: selectedBasicId || basicId || null,
+          aid: userProfile?.userId
         }),
       });
-
       // 本文は一度だけ読んで安全に parse
       const raw = await r.text();
       let j: any = null;
       try { j = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
-
       // エラーハンドリングを明示的に
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
         console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
-
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
           BAD_FORM_URL: "フォームURLが正しくありません。",
@@ -362,7 +355,6 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-
       // 成功
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
