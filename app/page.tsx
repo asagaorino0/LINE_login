@@ -59,41 +59,34 @@ export default function Home() {
   // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
   // 管理者ログイン後 or isAdmin 有効時に取得
   useEffect(() => {
-    handleAdminLogin()
     if (!isAdmin) return;
+    if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
+
     let aborted = false;
     (async () => {
       try {
         const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
-        if (r.status === 401) {
-          setAccounts([]); setSelectedBasicId(""); return;
-        }
-        const j = await r.json();
         if (aborted) return;
-        // 安全に配列化
+        if (r.status === 401) { setAccounts([]); setSelectedBasicId(""); return; }
+        const j = await r.json();
         const raw = Array.isArray(j?.items) ? j.items : [];
-        // 正規化：basicId は常に string にし、未定義は除外
         const normalized: Account[] = raw
           .map((a: any): Account => ({
             basicId: typeof a?.basicId === "string" ? a.basicId : "",
             channelName: typeof a?.channelName === "string" ? a.channelName : undefined,
             channelId: typeof a?.channelId === "string" ? a.channelId : undefined,
           }))
-          .filter((a: { basicId: string; }) => a.basicId !== ""); // 空のものは使わない
+          .filter((a: { basicId: string }) => a.basicId !== "");
         setAccounts(normalized);
-        setBasicId(normalized[0].basicId)
-        console.log(normalized, normalized[0].basicId)
-        // 初期選択（選択済みがなければ先頭 or 空文字）
+        setBasicId(normalized[0]?.basicId ?? "");
         setSelectedBasicId(prev => prev || (normalized[0]?.basicId ?? ""));
       } catch {
-        if (!aborted) {
-          setAccounts([]);
-          setSelectedBasicId("");
-        }
+        if (!aborted) { setAccounts([]); setSelectedBasicId(""); }
       }
     })();
     return () => { aborted = true; };
-  }, [isAdmin]);
+  }, [isAdmin, cookieInfo?.hasUid]);
+
 
   useEffect(() => {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
