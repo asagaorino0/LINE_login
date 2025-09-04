@@ -74,7 +74,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
+    if (!userProfile?.userId) return; // ★ クッキー準備ができてから
+    // if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
 
     let aborted = false;
     (async () => {
@@ -99,7 +100,9 @@ export default function Home() {
       }
     })();
     return () => { aborted = true; };
-  }, [isAdmin, cookieInfo?.hasUid]);
+  }, [isAdmin, userProfile?.userId]);
+  // }, [isAdmin, cookieInfo?.hasUid]);
+
   useEffect(() => {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
       .then(r => r.json())
