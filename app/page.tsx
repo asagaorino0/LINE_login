@@ -228,14 +228,39 @@ export default function Home() {
     },
   });
 
+  // const adminLoginMutation = useMutation<LiffProfile, Error>({
+  //   mutationFn: async () => {
+  //     await liffManager.login();
+  //     const profile = await liffManager.getProfile();
+  //     if (!profile) throw new Error('Profile not available');
+  //     // サーバ側で uid クッキーをセット
+  //     await apiRequest("POST", "/api/line-admin", {
+  //       lineUserId: profile.userId,
+  //       displayName: profile.displayName,
+  //       pictureUrl: profile.pictureUrl ?? null,
+  //     });
+  //     return profile;
+  //   },
+  //   onSuccess: (profile) => {
+  //     setUserProfile(profile);
+  //     setIsLoggedIn(true);
+  //     setError(null);
+  //     window.location.href = "/line-settings";
+  //   },
+  //   onError: (e) => {
+  //     console.error("Admin login failed:", e);
+  //     setError("管理者ログインに失敗しました。もう一度お試しください。");
+  //   },
+  // });
   const adminLoginMutation = useMutation<LiffProfile, Error>({
     mutationFn: async () => {
       await liffManager.login();
       const profile = await liffManager.getProfile();
       if (!profile) throw new Error('Profile not available');
-      // サーバ側で uid クッキーをセット
+
+      // サーバーに userId を渡す
       await apiRequest("POST", "/api/line-admin", {
-        lineUserId: profile.userId,
+        lineUserId: profile.userId,   // ★ ここで渡す
         displayName: profile.displayName,
         pictureUrl: profile.pictureUrl ?? null,
       });
@@ -252,6 +277,7 @@ export default function Home() {
       setError("管理者ログインに失敗しました。もう一度お試しください。");
     },
   });
+
   const handleAdminLogin = () => {
     if (!adminLoginMutation.isPending) {
       setError(null);
