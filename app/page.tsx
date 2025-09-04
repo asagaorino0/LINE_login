@@ -381,12 +381,11 @@ export default function Home() {
       // });
       // 本文は一度だけ読んで安全に parse
       const raw = await r.text();
-      let j: any = null;
-      try { j = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
-      // エラーハンドリングを明示的に
+      const j = await r.json();
+
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
-        console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
+        console.error("links-create error:", { status: r.status, code, detail: j });
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
           BAD_FORM_URL: "フォームURLが正しくありません。",
@@ -395,6 +394,7 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
+
       // 成功
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
