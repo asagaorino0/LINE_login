@@ -332,12 +332,12 @@ export default function Home() {
         return;
       }
 
-      const pickedBasicId = (selectedBasicId || basicId || "").trim();
-      // basicId を必須にしているなら
-      if (!pickedBasicId) {
-        showToast("公式LINE（basicId）を選択してください", "error");
-        return;
-      }
+      // const pickedBasicId = (selectedBasicId || basicId || "").trim();
+      // // basicId を必須にしているなら
+      // if (!pickedBasicId) {
+      //   showToast("公式LINE（basicId）を選択してください", "error");
+      //   return;
+      // }
 
       // ここで payload を“undefined を含めない形”で組み立て
       const payload: any = {
@@ -346,8 +346,18 @@ export default function Home() {
         desc: String(descToSave ?? ""),
         notify: notifyEnabled ? 1 : 0,
         aid: userProfile.userId,            // ここは必ず string
-        basicId: pickedBasicId,             // 必須なら必ず string
       };
+
+      // ★ notifyEnabled が ON のときだけ basicId を追加する
+      if (notifyEnabled) {
+        const pickedBasicId = (selectedBasicId || basicId || "").trim();
+        if (!pickedBasicId) {
+          showToast("公式LINE（basicId）を選択してください", "error");
+          return;
+        }
+        payload.basicId = pickedBasicId;
+      }
+
 
       const r = await fetch("/api/links", {
         method: "POST",
