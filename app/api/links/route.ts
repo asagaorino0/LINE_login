@@ -1,13 +1,15 @@
 // app/api/links/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 const FORM_ID_RE = /\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//;
+const ok = (req: NextRequest, body: any, status = 200) => NextResponse.json(body, { status });
+const fail = (req: NextRequest, body: any, status = 500) => NextResponse.json(body, { status });
 
 function extractFormId(url: string) {
   return url.match(FORM_ID_RE)?.[1] ?? null;
@@ -22,10 +24,6 @@ function getPublicOrigin(req: NextRequest) {
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? new URL(req.url).host;
   return `${proto}://${host}`;
 }
-const ok = (req: NextRequest, body: any, status = 200) =>
-  NextResponse.json(body, { status });
-const fail = (req: NextRequest, body: any, status = 500) =>
-  NextResponse.json(body, { status });
 
 type Body = {
   form?: string;
@@ -38,8 +36,7 @@ type Body = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, basicId, expiresAt } =
-      (await req.json()) as Body;
+    const { form, title, desc, notify, basicId, expiresAt } = (await req.json()) as Body;
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);

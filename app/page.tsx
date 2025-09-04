@@ -262,21 +262,22 @@ export default function Home() {
   // ---- 署名付きリンク生成（管理画面のボタン）---------------------------
   const handleGenerateLink = async () => {
     if (!formUrl.trim()) {
-      showToast('フォームURLを先に入力してください', 'error');
+      showToast("フォームURLを先に入力してください", "error");
       return;
     }
+
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
     setSignedLink("");
 
     try {
-      const normalized = viewUrlNormalized;
       // 1) URL正規化 & 質問ID検出（タイトル/説明も取得）
-      //    ← ここをローカル変数に保持し、POSTにも同じ値を使う
+      const normalized = viewUrlNormalized;
       let titleToSave = formTitle || "Googleフォーム";
       let descToSave = formDescription || "リンクを開くにはこちらをタップ";
 
+      // 失敗しても致命的ではないので .catch(() => null)
       const result = await GoogleFormsManager.detectEntryIds(normalized).catch(() => null);
       if (result?.success) {
         if (result.title) titleToSave = result.title;
@@ -287,42 +288,52 @@ export default function Home() {
           setLastDetectionResult({ userId: result.userId, message: result.message, formUrl: normalized });
         }
       } else if (result && !result.success) {
-        showToast(`検出に失敗しました: ${result.error}`, 'error');
+        showToast(`検出に失敗しました: ${result.error}`, "error");
       }
-      // 画面表示用の state 更新（POST には使わない）
+
+      // 画面表示用 state 更新（※POST に使う値は上のローカル変数を送る）
       setFormTitle(titleToSave);
       setFormDescription(descToSave);
 
-      // 2) サーバに署名付きリンクを作らせる（★ ローカル変数を渡す）
+      // 2) 署名付きリンク作成 API
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        credentials: "include", // ← 本番ドメインの uid クッキーが必須
         body: JSON.stringify({
           form: normalized,
           title: titleToSave,
           desc: descToSave,
           notify: notifyEnabled ? 1 : 0,
-          basicId: selectedBasicId || basicId,
+          basicId: selectedBasicId || basicId || null,
         }),
       });
-      // 本文は一度だけ読む
+
+      // 本文は一度だけ読んで安全に parse
       const raw = await r.text();
-      let data: any = null;
-      try { data = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
-      if (!r.ok || !data?.ok) {
-        console.error("links-create error:", {
-          status: r.status,
-          code: data?.code ?? "UNKNOWN",
-          detail: data ?? raw,     // JSONならそのオブジェクト、非JSONなら生テキスト
-        });
-        throw new Error(data?.code ?? "links-create failed");
+      let j: any = null;
+      try { j = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
+
+      // エラーハンドリングを明示的に
+      if (!r.ok || !j?.ok) {
+        const code = j?.code || "UNKNOWN";
+        console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
+
+        const msgMap: Record<string, string> = {
+          NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
+          BAD_FORM_URL: "フォームURLが正しくありません。",
+          NO_FORM: "フォームURLを入力してください。",
+        };
+        showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
+        return;
       }
-      setSignedLink(data.link);
+
+      // 成功
+      setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
-      showToast('連携リンク生成でエラーが発生しました', 'error');
+      showToast("連携リンク生成でエラーが発生しました", "error");
     } finally {
       setIsDetecting(false);
     }

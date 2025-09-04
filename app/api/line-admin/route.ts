@@ -1,7 +1,6 @@
 // app/api/line-admin/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -23,7 +22,7 @@ export async function POST(req: NextRequest) {
     value: id,
     httpOnly: true,
     sameSite: "lax",
-    secure,          // 本番は true、ローカルは false
+    secure,
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
