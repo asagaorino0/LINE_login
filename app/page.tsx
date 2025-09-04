@@ -64,6 +64,9 @@ export default function Home() {
     (async () => {
       try {
         const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
+        if (r.status === 401) {
+          setAccounts([]); setSelectedBasicId(""); return;
+        }
         const j = await r.json();
         if (aborted) return;
         // 安全に配列化

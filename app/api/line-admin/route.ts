@@ -7,35 +7,25 @@ export const dynamic = "force-dynamic";
 
 const UID_RE = /^U[0-9a-f]{32,}$/i;
 
-const bad = (code: string, status = 400) =>
-  NextResponse.json({ ok: false, code }, { status });
-
 export async function POST(req: NextRequest) {
   let json: any;
-  try {
-    json = await req.json();
-  } catch {
-    return bad("BAD_JSON");
+  try { json = await req.json(); } catch {
+    return NextResponse.json({ ok: false, code: "BAD_JSON" }, { status: 400 });
+  }
+  const id = json?.lineUserId;
+  if (typeof id !== "string" || !UID_RE.test(id)) {
+    return NextResponse.json({ ok: false, code: "BAD_UID" }, { status: 400 });
   }
 
-  const lineUserId = json?.lineUserId;
-  if (typeof lineUserId !== "string" || !UID_RE.test(lineUserId)) {
-    return bad("BAD_UID", 400);
-  }
-
-  // ローカル(http)でも動くように。Vercel(https)では true になる。
   const secure = process.env.NODE_ENV === "production";
-
-  const jar = await cookies();
-  jar.set({
+  (await cookies()).set({
     name: "uid",
-    value: lineUserId,      // 管理者の LINE UID（LIFF から来たやつ）
+    value: id,
     httpOnly: true,
     sameSite: "lax",
-    secure,
+    secure,          // 本番は true、ローカルは false
     path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30日
+    maxAge: 60 * 60 * 24 * 30,
   });
-
   return NextResponse.json({ ok: true }, { status: 200 });
 }
