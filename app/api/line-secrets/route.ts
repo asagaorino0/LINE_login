@@ -33,12 +33,71 @@ function unauthorized() {
   return NextResponse.json({ ok: false, code: "NO_ADMIN_ID" }, { status: 401 });
 }
 const ok = (body: any, init?: number) => NextResponse.json(body, { status: init ?? 200 });
+
 /** aid は cookie(uid) から取得（管理UIは /api/line-admin で先にセット） */
 async function getAidFromCookie(): Promise<string | null> {
   const jar = await cookies();
   return jar.get("uid")?.value ?? null;
 }
+
 /** ====== GET ======
+ *  - /api/line-secrets?mine=1  … 自分(aid)のチャンネル一覧（機微は返さない）
+ *  - /api/line-secrets?id=...  … 1件取得（復号して返す：管理UIの編集フォーム用）
+ */
+// app/api/line-secrets/route.ts
+export async function GET(req: NextRequest) {
+  try {
+    const jar = await cookies();
+    const uid = jar.get("uid")?.value || "";
+    if (!uid) return NextResponse.json({ ok: false, code: "NO_ADMIN_ID" }, { status: 401 });
+
+    const sp = new URL(req.url).searchParams;
+    const idParam = sp.get("id");
+
+    const c = getLineSecretsByIdContainer();
+
+    // ① id指定 → 復号して1件返す
+    if (idParam) {
+      const { resource } = await c.item(idParam, idParam).read<SecretsDoc>();
+      if (!resource) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
+      const sec = open(resource.enc) as { channelSecret: string; channelAccessToken: string; liffId?: string | null };
+      return NextResponse.json({
+        ok: true,
+        doc: {
+          id: resource.id,
+          aid: resource.aid,
+          basicId: resource.basicId ?? null,
+          channelName: resource.channelName ?? null,
+          ...sec,
+        },
+      });
+    }
+
+    // ② 一覧（mine=1 が無くても cookie があれば返す）
+    const query = {
+      query: `
+        SELECT c.id, c.aid, c.basicId, c.channelName, c.createdAt, c.updatedAt
+        FROM c
+        WHERE c.aid = @aid                  -- 新ドキュメント
+           OR c.id = @aid                   -- 旧: id=aid だけのもの
+           OR STARTSWITH(c.id, @prefix)     -- 旧/新: id="aid#@basicId"
+      `,
+      parameters: [
+        { name: "@aid", value: uid },
+        { name: "@prefix", value: `${uid}#` },
+      ],
+    };
+
+    const { resources } = await c.items
+      .query<SecretsDoc>(query)
+      .fetchAll();
+    return NextResponse.json({ ok: true, items: resources ?? [] });
+  } catch (e) {
+    console.error("GET /api/line-secrets failed:", e);
+    return NextResponse.json({ ok: false, code: "LINE_SECRETS_GET_FAILED" }, { status: 500 });
+  }
+}
+
 
 /** ====== POST ======
  * 新規/更新（id が無い場合は aid + basicId で新規 upsert）
@@ -57,6 +116,7 @@ export async function POST(req: NextRequest) {
       body.liffId && body.liffId.trim()
         ? (body.liffId.trim().startsWith("@") ? body.liffId.trim() : `@${body.liffId.trim()}`)
         : null;
+
     // 複数公式LINEに対応するなら basicId は必須にする方が安全
     if (!basicId) {
       return NextResponse.json({ ok: false, code: "BASIC_ID_REQUIRED" }, { status: 400 });
