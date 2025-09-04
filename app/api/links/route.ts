@@ -87,14 +87,23 @@ export async function POST(req: NextRequest) {
     const origin = getPublicOrigin(req);
     return ok(req, { ok: true, link: `${origin}/open?lid=${lid}`, lid }, 201);
   } catch (e: any) {
-    // Zodなどのバリデーションエラーを“見える化”
     if (e?.errors && Array.isArray(e.errors)) {
-      console.error("❌ /api/links zod-error", e.errors);
-      return fail(req, { ok: false, code: "INVALID_USER_DATA", errors: e.errors }, 400);
+      const fields = e.errors.map((er: any) => ({
+        path: Array.isArray(er.path) ? er.path.join(".") : String(er.path),
+        expected: er.expected,
+        received: er.received,
+        message: er.message,
+      }));
+      console.error("❌ /api/links validation error", fields);
+      return NextResponse.json(
+        { ok: false, code: "INVALID_USER_DATA", fields },
+        { status: 400 }
+      );
     }
     console.error("❌ /api/links failed:", e);
-    return fail(req, { ok: false, code: "LINKS_CREATE_FAILED" }, 500);
+    return NextResponse.json({ ok: false, code: "LINKS_CREATE_FAILED" }, { status: 500 });
   }
+
 }
 
 
