@@ -365,27 +365,38 @@ export default function Home() {
         body: JSON.stringify(payload),
       });
 
-
-      // const r = await fetch("/api/links", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   credentials: "include", // ← 本番ドメインの uid クッキーが必須
-      //   body: JSON.stringify({
-      //     form: normalized,
-      //     title: titleToSave,
-      //     desc: descToSave,
-      //     notify: notifyEnabled ? 1 : 0,
-      //     basicId: selectedBasicId || basicId || null,
-      //     aid: userProfile?.userId
-      //   }),
-      // });
-      // 本文は一度だけ読んで安全に parse
-      const raw = await r.text();
-      const j = await r.json();
+      const text = await r.text();           // ← これ“だけ”で読む（1回だけ）
+      let j: any = null;
+      try { j = text ? JSON.parse(text) : null; } catch { /* 非JSON */ }
 
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
-        console.error("links-create error:", { status: r.status, code, detail: j });
+        console.error("links-create error:", { status: r.status, code, detail: j ?? text });
+        // …トーストなど
+        //   return;
+        // }
+
+        // // const r = await fetch("/api/links", {
+        // //   method: "POST",
+        // //   headers: { "Content-Type": "application/json" },
+        // //   credentials: "include", // ← 本番ドメインの uid クッキーが必須
+        // //   body: JSON.stringify({
+        // //     form: normalized,
+        // //     title: titleToSave,
+        // //     desc: descToSave,
+        // //     notify: notifyEnabled ? 1 : 0,
+        // //     basicId: selectedBasicId || basicId || null,
+        // //     aid: userProfile?.userId
+        // //   }),
+        // // });
+        // // 本文は一度だけ読んで安全に parse
+        // const raw = await r.text();
+        // let j: any = null;
+        // try { j = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
+        // // エラーハンドリングを明示的に
+        // if (!r.ok || !j?.ok) {
+        //   const code = j?.code || "UNKNOWN";
+        //   console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
           BAD_FORM_URL: "フォームURLが正しくありません。",
@@ -394,7 +405,17 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-
+      // if (!r.ok || !j?.ok) {
+      //   const code = j?.code || "UNKNOWN";
+      //   console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
+      //   const msgMap: Record<string, string> = {
+      //     NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
+      //     BAD_FORM_URL: "フォームURLが正しくありません。",
+      //     NO_FORM: "フォームURLを入力してください。",
+      //   };
+      //   showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
+      //   return;
+      // }
       // 成功
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
