@@ -1,4 +1,3 @@
-// app/api/links/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -42,8 +41,16 @@ export async function POST(req: NextRequest) {
     const formId = extractFormId(form);
     if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
 
-    const aid = (await cookies()).get("uid")?.value;
+    // ← ここを await にする
+    const cookieStore = await cookies();
+    const aid = cookieStore.get("uid")?.value ?? null;
     if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
+
+    // basicId を正規化して @ 付け忘れに対応
+    const normBasicId =
+      typeof basicId === "string" && basicId.trim()
+        ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
+        : null;
 
     const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
     const now = Math.floor(Date.now() / 1000);
@@ -51,7 +58,7 @@ export async function POST(req: NextRequest) {
     await getLinksByIdContainer().items.upsert({
       id: lid,
       aid,
-      basicId: basicId ?? null,
+      basicId: normBasicId,           // ← 修正：正規化した値を保存
       formUrl: form,
       formId,
       title: title ?? null,
