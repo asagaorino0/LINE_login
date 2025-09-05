@@ -1,7 +1,27 @@
+// api/line-users.ts
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { z } from 'zod';
 
-// Simplified types for API-only deployment
+function withSig(
+  data: any,
+  status: number = 200,
+  extraHeaders: Record<string, string> = {}
+) {
+  return {
+    body: {
+      ...data,
+      _source: 'vercel-fn:api/line-users.ts',
+      _ts: new Date().toISOString(),
+    },
+    status,
+    headers: {
+      'x-source': 'vercel-fn:api/line-users.ts',
+      'x-source-ts': Date.now().toString(),
+      ...extraHeaders,
+    },
+  };
+}
+
 interface LineUser {
   id: string;
   lineUserId: string;
@@ -16,7 +36,7 @@ const insertLineUserSchema = z.object({
   pictureUrl: z.string().optional(),
 });
 
-// In-memory storage for simplicity (consider database for production)
+// 超簡易ストア（本番はDB推奨）
 const lineUsers: Map<string, LineUser> = new Map();
 
 function generateId(): string {
@@ -24,72 +44,100 @@ function generateId(): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Set CORS headers
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+  // OPTIONS
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    const p = withSig({ ok: true, code: 'OPTIONS_OK' }, 200);
+    Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(p.status).json(p.body);
   }
 
+  // POST /api/line-users
   if (req.method === 'POST') {
     try {
       const validatedData = insertLineUserSchema.parse(req.body);
 
-      // Check if user already exists
-      const existingUser = Array.from(lineUsers.values()).find(
-        user => user.lineUserId === validatedData.lineUserId
+      // 既存チェック
+      const existing = Array.from(lineUsers.values()).find(
+        u => u.lineUserId === validatedData.lineUserId
       );
 
-      if (existingUser) {
-        // Update existing user
-        const updatedUser: LineUser = {
-          ...existingUser,
+      let result: LineUser;
+      if (existing) {
+        result = {
+          ...existing,
           displayName: validatedData.displayName,
-          pictureUrl: validatedData.pictureUrl || null,
+          pictureUrl: validatedData.pictureUrl ?? null,
         };
-        lineUsers.set(existingUser.id, updatedUser);
-        return res.status(200).json(updatedUser);
+        lineUsers.set(existing.id, result);
+        const p = withSig(result, 200);
+        Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+        return res.status(p.status).json(p.body);
       }
 
-      // Create new user
-      const newUser: LineUser = {
+      // 新規
+      result = {
         id: generateId(),
         lineUserId: validatedData.lineUserId,
         displayName: validatedData.displayName,
-        pictureUrl: validatedData.pictureUrl || null,
+        pictureUrl: validatedData.pictureUrl ?? null,
         createdAt: new Date(),
       };
+      lineUsers.set(result.id, result);
+      const p = withSig(result, 201);
+      Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+      return res.status(p.status).json(p.body);
 
-      lineUsers.set(newUser.id, newUser);
-      return res.status(201).json(newUser);
-
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid user data eeeee", errors: error.errors });
+        const p = withSig(
+          {
+            message: 'Invalid user data eeeee',
+            errors: error.errors,
+            dbg: {
+              method: req.method,
+              url: req.url,
+              ctype: req.headers['content-type'] || null,
+              bodyType: typeof req.body,
+              keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : null,
+            },
+          },
+          400
+        );
+        Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+        return res.status(p.status).json(p.body);
       }
-      return res.status(500).json({ message: "Failed to create/update LINE user" });
+      const p = withSig({ message: 'Failed to create/update LINE user' }, 500);
+      Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+      return res.status(p.status).json(p.body);
     }
   }
 
+  // GET /api/line-users?lineUserId=...
   if (req.method === 'GET') {
     const { lineUserId } = req.query;
-
     if (typeof lineUserId === 'string') {
-      const user = Array.from(lineUsers.values()).find(
-        u => u.lineUserId === lineUserId
-      );
-
+      const user = Array.from(lineUsers.values()).find(u => u.lineUserId === lineUserId);
       if (!user) {
-        return res.status(404).json({ message: "LINE user not found" });
+        const p = withSig({ message: 'LINE user not found' }, 404);
+        Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+        return res.status(p.status).json(p.body);
       }
-
-      return res.status(200).json(user);
+      const p = withSig(user, 200);
+      Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+      return res.status(p.status).json(p.body);
     }
-
-    return res.status(400).json({ message: "lineUserId parameter required" });
+    const p = withSig({ message: 'lineUserId parameter required' }, 400);
+    Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(p.status).json(p.body);
   }
 
-  return res.status(405).json({ message: "Method not allowed" });
+  // 405
+  const p = withSig({ message: 'Method not allowed' }, 405);
+  Object.entries(p.headers).forEach(([k, v]) => res.setHeader(k, v));
+  return res.status(p.status).json(p.body);
 }
