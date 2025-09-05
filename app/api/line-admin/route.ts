@@ -22,22 +22,22 @@
 //   return res;
 // }
 // app/api/line-admin/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const lineUserId: string = body.lineUserId;
+export async function POST(req: NextRequest) {
+  const { lineUserId } = await req.json().catch(() => ({}));
 
+  if (!lineUserId || typeof lineUserId !== "string") {
+    return NextResponse.json({ ok: false, code: "NO_UID" }, { status: 400 });
+  }
   const res = NextResponse.json({ ok: true });
-
   res.cookies.set("uid", lineUserId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 24 * 30, // 30日
   });
-
   return res;
 }
 

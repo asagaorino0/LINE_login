@@ -1,12 +1,14 @@
-// app/api/links/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
-import { getLinksByIdContainer } from "@/lib/cosmos";
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import crypto from "crypto";
+import { getLinksByIdContainer } from "@/lib/cosmos";
+
 const FORM_ID_RE = /\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//;
+const ok = (req: NextRequest, body: any, status = 200) => NextResponse.json(body, { status });
+const fail = (req: NextRequest, body: any, status = 500) => NextResponse.json(body, { status });
 
 function extractFormId(url: string) {
   return url.match(FORM_ID_RE)?.[1] ?? null;
@@ -22,54 +24,54 @@ function getPublicOrigin(req: NextRequest) {
   return `${proto}://${host}`;
 }
 
+type Body = {
+  form?: string;
+  title?: string | null;
+  desc?: string | null;
+  notify?: number | boolean;
+  basicId?: string | null;
+  expiresAt?: number | 0;
+};
+
 export async function POST(req: NextRequest) {
-  // ping 動作は残すとデバッグ便利
-  if (req.nextUrl.searchParams.get("ping") === "1") {
-    return NextResponse.json({ ok: true, code: "PING_OK", route: "/api/links" }, { status: 200 });
-  }
-
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const form: string = typeof body.form === "string" ? body.form : "";
-    const title: string = typeof body.title === "string" ? body.title : "";
-    const desc: string = typeof body.desc === "string" ? body.desc : "";
-    const notify: number = body.notify ? 1 : 0;
-    const aid: string = typeof body.aid === "string" ? body.aid : "";
-    const basicIdRaw: string = typeof body.basicId === "string" ? body.basicId.trim() : "";
+    const { form, title, desc, notify, basicId, expiresAt } = (await req.json()) as Body;
 
-    if (!form) return NextResponse.json({ ok: false, code: "NO_FORM" }, { status: 400 });
+    if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
-    if (!formId) return NextResponse.json({ ok: false, code: "BAD_FORM_URL" }, { status: 400 });
-    if (!aid) return NextResponse.json({ ok: false, code: "NO_ADMIN_ID" }, { status: 401 });
+    if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
 
-    // notify=1 のときだけ basicId 必須＆正規化
-    let normBasicId: string | null = null;
-    if (notify) {
-      if (!basicIdRaw) return NextResponse.json({ ok: false, code: "NO_BASIC_ID" }, { status: 400 });
-      normBasicId = basicIdRaw.startsWith("@") ? basicIdRaw : `@${basicIdRaw}`;
-    }
+    // ← ここを await にする
+    const cookieStore = await cookies();
+    const aid = cookieStore.get("uid")?.value ?? null;
+    if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
+
+    // basicId を正規化して @ 付け忘れに対応
+    const normBasicId =
+      typeof basicId === "string" && basicId.trim()
+        ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
+        : null;
 
     const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
     const now = Math.floor(Date.now() / 1000);
 
-    const item: any = {
+    await getLinksByIdContainer().items.upsert({
       id: lid,
       aid,
+      basicId: normBasicId,           // ← 修正：正規化した値を保存
       formUrl: form,
       formId,
-      title,
-      desc,
-      notify,
+      title: title ?? null,
+      desc: desc ?? null,
+      notify: notify ? 1 : 0,
       createdAt: now,
-      expiresAt: Number(body.expiresAt || 0) || 0,
-    };
-    if (normBasicId) item.basicId = normBasicId;
-
-    await getLinksByIdContainer().items.upsert(item);
+      expiresAt: Number(expiresAt || 0) || 0,
+    });
 
     const origin = getPublicOrigin(req);
-    return NextResponse.json({ ok: true, link: `${origin}/open?lid=${lid}`, lid }, { status: 201 });
+    return ok(req, { ok: true, link: `${origin}/open?lid=${lid}`, lid }, 201);
   } catch (e: any) {
-    return NextResponse.json({ ok: false, code: "LINKS_CREATE_FAILED" }, { status: 500 });
+    console.error("❌ /api/links failed:", e);
+    return fail(req, { ok: false, code: "LINKS_CREATE_FAILED" }, 500);
   }
 }

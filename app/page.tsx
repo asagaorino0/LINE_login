@@ -59,17 +59,26 @@ export default function Home() {
   // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
   // 管理者ログイン後 or isAdmin 有効時に取得
   const firedAdminLoginRef = useRef(false);
+  const setAdminCookie = useMutation<
+    void,
+    Error,
+    { lineUserId: string; displayName?: string; pictureUrl?: string | null }
+  >({
+    mutationFn: async (vars) => {
+      await apiRequest("POST", "/api/line-admin", vars);
+    },
+  });
 
   useEffect(() => {
-    // userProfile.userId がまだ無い → 何もしない
     if (!userProfile?.userId) return;
-    // すでに実行済みならスキップ
     if (firedAdminLoginRef.current) return;
     firedAdminLoginRef.current = true;
-    // すでに送信中ならスキップ
-    if (adminLoginMutation.isPending) return;
-    // 実行！
-    adminLoginMutation.mutate();
+    if (setAdminCookie.isPending) return;
+    setAdminCookie.mutate({
+      lineUserId: userProfile.userId,
+      displayName: userProfile.displayName,
+      pictureUrl: userProfile.pictureUrl ?? null,
+    });
   }, [userProfile?.userId]);
 
   useEffect(() => {
@@ -261,38 +270,39 @@ export default function Home() {
   //     setError("管理者ログインに失敗しました。もう一度お試しください。");
   //   },
   // });
-  const adminLoginMutation = useMutation<LiffProfile, Error>({
-    mutationFn: async () => {
-      await liffManager.login();
-      const profile = await liffManager.getProfile();
-      if (!profile) throw new Error('Profile not available');
 
-      // サーバーに userId を渡す
-      await apiRequest("POST", "/api/line-admin", {
-        lineUserId: profile.userId,   // ★ ここで渡す
-        displayName: profile.displayName,
-        pictureUrl: profile.pictureUrl ?? null,
-      });
-      return profile;
-    },
-    onSuccess: (profile) => {
-      setUserProfile(profile);
-      setIsLoggedIn(true);
-      setError(null);
-      // window.location.href = "/line-settings";
-    },
-    onError: (e) => {
-      console.error("Admin login failed:", e);
-      setError("管理者ログインに失敗しました。もう一度お試しください。");
-    },
-  });
+  // const adminLoginMutation = useMutation<LiffProfile, Error>({
+  //   mutationFn: async () => {
+  //     await liffManager.login();
+  //     const profile = await liffManager.getProfile();
+  //     if (!profile) throw new Error('Profile not available');
 
-  const handleAdminLogin = () => {
-    if (!adminLoginMutation.isPending) {
-      setError(null);
-      adminLoginMutation.mutate();
-    }
-  };
+  //     // サーバーに userId を渡す
+  //     await apiRequest("POST", "/api/line-admin", {
+  //       lineUserId: profile.userId,   // ★ ここで渡す
+  //       displayName: profile.displayName,
+  //       pictureUrl: profile.pictureUrl ?? null,
+  //     });
+  //     return profile;
+  //   },
+  //   onSuccess: (profile) => {
+  //     setUserProfile(profile);
+  //     setIsLoggedIn(true);
+  //     setError(null);
+  //     // window.location.href = "/line-settings";
+  //   },
+  //   onError: (e) => {
+  //     console.error("Admin login failed:", e);
+  //     setError("管理者ログインに失敗しました。もう一度お試しください。");
+  //   },
+  // });
+
+  // const handleAdminLogin = () => {
+  //   if (!adminLoginMutation.isPending) {
+  //     setError(null);
+  //     adminLoginMutation.mutate();
+  //   }
+  // };
 
   // ---- 署名付きリンク生成（管理画面のボタン）---------------------------
   const handleGenerateLink = async () => {
@@ -340,7 +350,7 @@ export default function Home() {
         title: String(nextTitle ?? ""),
         desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        aid: userProfile!.userId, // ← 必ず string
+        // aid: userProfile!.userId, // ← 必ず string
       };
 
       // const payload: any = {
