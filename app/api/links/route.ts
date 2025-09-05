@@ -26,6 +26,11 @@ function getPublicOrigin(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  console.info("HIT /api/links v=2025-09-05T12:34+09:00", req.nextUrl.toString());
+  if (req.nextUrl.searchParams.get("ping") === "1") {
+    return NextResponse.json({ ok: true, code: "PING_OK", route: "/api/links" }, { status: 200 });
+  }
+
   try {
     const body = await req.json();
 
