@@ -300,65 +300,49 @@ export default function Home() {
       showToast("フォームURLを先に入力してください", "error");
       return;
     }
+    if (!userProfile?.userId) {
+      showToast("LINEログイン後にお試しください（userId 未取得）", "error");
+      return;
+    }
+
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
     setSignedLink("");
+
     try {
-      // 1) URL正規化 & 質問ID検出（タイトル/説明も取得）
+      // 1) URL正規化 & 質問ID検出（失敗は致命的ではない）
       const normalized = viewUrlNormalized;
-      let titleToSave = formTitle || "Googleフォーム";
-      let descToSave = formDescription || "リンクを開くにはこちらをタップ";
-      // 失敗しても致命的ではないので .catch(() => null)
-      const result = await GoogleFormsManager.detectEntryIds(normalized).catch(() => null);
-      if (result?.success) {
-        if (result.title) titleToSave = result.title;
-        if (result.description) descToSave = result.description;
-        setDetectedEntries({ userId: result.userId, message: result.message });
-        if (result.userId) {
-          setLastDetectionResult({ userId: result.userId, message: result.message, formUrl: normalized });
+      let nextTitle = formTitle || "Googleフォーム";
+      let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
+
+      try {
+        const result = await GoogleFormsManager.detectEntryIds(normalized);
+        if (result?.success) {
+          if (result.title) nextTitle = result.title;
+          if (result.description) nextDesc = result.description;
+          setDetectedEntries({ userId: result.userId, message: result.message });
+          if (result.userId) {
+            setLastDetectionResult({ userId: result.userId, message: result.message, formUrl: normalized });
+          }
+        } else if (result && !result.success) {
+          showToast(`検出に失敗しました: ${result.error}`, "error");
         }
-      } else if (result && !result.success) {
-        showToast(`検出に失敗しました: ${result.error}`, "error");
-      }
-      // 画面表示用 state 更新（※POST に使う値は上のローカル変数を送る）
-      setFormTitle(titleToSave);
-      setFormDescription(descToSave);
-      // 2) 署名付きリンク作成 API
-      console.log(userProfile?.userId)
-      // 送信直前に
-      if (!userProfile?.userId) {
-        showToast("LINEログイン後にお試しください（userId 未取得）", "error");
-        return;
-      }
+      } catch { /* ignore detection failure */ }
 
-      // const pickedBasicId = (selectedBasicId || basicId || "").trim();
-      // // basicId を必須にしているなら
-      // if (!pickedBasicId) {
-      //   showToast("公式LINE（basicId）を選択してください", "error");
-      //   return;
-      // }
+      // 画面表示用 state 更新
+      setFormTitle(nextTitle);
+      setFormDescription(nextDesc);
 
-      // ここで payload を“undefined を含めない形”で組み立て
-      const payload = {
+      // 2) payload を “undefined を含めない” 形で構築
+      const payload: Record<string, any> = {
         form: normalized,
-        title: String(titleToSave ?? ""),
-        desc: String(descToSave ?? ""),
+        title: String(nextTitle ?? ""),
+        desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        aid: userProfile?.userId ?? null,
-        ...(notifyEnabled ? { basicId: (selectedBasicId || basicId || "").trim() } : {}),
+        aid: userProfile.userId, // ← 必ず string
       };
 
-      console.info("[handleGenerateLink] payload to /api/links:", payload);
-
-      // const r = await fetch("/api/links", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(payload),
-      // });
-
-
-      // ★ notifyEnabled が ON のときだけ basicId を追加する
       if (notifyEnabled) {
         const pickedBasicId = (selectedBasicId || basicId || "").trim();
         if (!pickedBasicId) {
@@ -368,65 +352,36 @@ export default function Home() {
         payload.basicId = pickedBasicId;
       }
 
+      console.info("[handleGenerateLink] payload to /api/links:", payload);
 
+      // 3) リクエスト（レスポンスは 1 回だけ読む）
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const text = await r.text();           // ← これ“だけ”で読む（1回だけ）
+      const text = await r.text(); // ← 一度だけ読む
       let j: any = null;
       try { j = text ? JSON.parse(text) : null; } catch { /* 非JSON */ }
 
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
-        console.error("links-create error:", { status: r.status, code, detail: j ?? text });
-        // …トーストなど
-        //   return;
-        // }
+        const details = j?.fields || j; // サーバが fields を返す場合に備え
+        console.error("links-create error:", { status: r.status, code, detail: details });
 
-        // // const r = await fetch("/api/links", {
-        // //   method: "POST",
-        // //   headers: { "Content-Type": "application/json" },
-        // //   credentials: "include", // ← 本番ドメインの uid クッキーが必須
-        // //   body: JSON.stringify({
-        // //     form: normalized,
-        // //     title: titleToSave,
-        // //     desc: descToSave,
-        // //     notify: notifyEnabled ? 1 : 0,
-        // //     basicId: selectedBasicId || basicId || null,
-        // //     aid: userProfile?.userId
-        // //   }),
-        // // });
-        // // 本文は一度だけ読んで安全に parse
-        // const raw = await r.text();
-        // let j: any = null;
-        // try { j = raw ? JSON.parse(raw) : null; } catch { /* 非JSON */ }
-        // // エラーハンドリングを明示的に
-        // if (!r.ok || !j?.ok) {
-        //   const code = j?.code || "UNKNOWN";
-        //   console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
           BAD_FORM_URL: "フォームURLが正しくありません。",
           NO_FORM: "フォームURLを入力してください。",
+          NO_BASIC_ID: "通知ONでは basicId が必須です。",
+          INVALID_USER_DATA: "送信データに不足があります。",
         };
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-      // if (!r.ok || !j?.ok) {
-      //   const code = j?.code || "UNKNOWN";
-      //   console.error("links-create error:", { status: r.status, code, detail: j ?? raw });
-      //   const msgMap: Record<string, string> = {
-      //     NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
-      //     BAD_FORM_URL: "フォームURLが正しくありません。",
-      //     NO_FORM: "フォームURLを入力してください。",
-      //   };
-      //   showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
-      //   return;
-      // }
-      // 成功
+
+      // 4) 成功
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
@@ -436,6 +391,7 @@ export default function Home() {
       setIsDetecting(false);
     }
   };
+
 
 
   // ---- prefill url builder（自動モードで使う） --------------------------

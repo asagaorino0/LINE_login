@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // --- 受信内容の見える化（確実にログを出す）---
+    // ★ 受信直後に型＆値をログ（早期 return でも必ず出る）
     const form = typeof body.form === "string" ? body.form : "";
     const title = typeof body.title === "string" ? body.title : "";
     const desc = typeof body.desc === "string" ? body.desc : "";
@@ -41,19 +41,21 @@ export async function POST(req: NextRequest) {
       keys: Object.keys(body),
       types: {
         form: typeof body.form, title: typeof body.title, desc: typeof body.desc,
-        notify: typeof body.notify, aid: typeof body.aid, basicId: typeof body.basicId,
+        notify: typeof body.notify, aid: typeof body.aid, basicId: typeof body.basicId
       },
       values: {
-        hasForm: !!form,
-        hasTitle: !!title,
-        hasDesc: !!desc,
-        notify,
-        hasAid: !!aid,
-        aidMasked: aid ? aid.slice(0, 6) + "…" : null,
-        basicIdIn,
-      },
+        hasForm: !!form, hasTitle: !!title, hasDesc: !!desc, notify,
+        hasAid: !!aid, aidMasked: aid ? aid.slice(0, 6) + "…" : null, basicIdIn
+      }
     });
-
+    // ★ クエリ ?debug=1 ならそのまま中身を返す（本番でも即確認できる）
+    const debug = req.nextUrl.searchParams.get("debug") === "1";
+    if (debug) {
+      return NextResponse.json({
+        ok: false, code: "DEBUG_ECHO",
+        received: { form, title, desc, notify, aid, basicIdIn }
+      }, { status: 200 });
+    }
     // --- 早期バリデーション（必ず code を付ける＋ログも出す）---
     if (!form) {
       console.warn("[/api/links] NO_FORM");
