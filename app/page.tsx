@@ -352,10 +352,10 @@ export default function Home() {
         payload.basicId = pickedBasicId;
       }
 
-      console.info("[handleGenerateLink] payload to /api/links:", payload);
+      console.info("[handleGenerateLink] payload to /api/links2:", payload);
 
       // 3) リクエスト（レスポンスは 1 回だけ読む）
-      const r = await fetch("/api/links", {
+      const r = await fetch("/api/links2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -385,6 +385,7 @@ export default function Home() {
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
+
       console.error("generate link failed:", e);
       showToast("連携リンク生成でエラーが発生しました", "error");
     } finally {
