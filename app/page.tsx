@@ -335,12 +335,24 @@ export default function Home() {
       setFormDescription(nextDesc);
 
       // 2) payload を “undefined を含めない” 形で構築
-      const payload: Record<string, any> = {
+      // const payload: Record<string, any> = {
+      //   form: normalized,
+      //   title: String(nextTitle ?? ""),
+      //   desc: String(nextDesc ?? ""),
+      //   notify: notifyEnabled ? 1 : 0,
+      //   aid: userProfile.userId, // ← 必ず string
+      // };
+      // フロントの payload に一時的に追加
+      const payload: any = {
         form: normalized,
         title: String(nextTitle ?? ""),
         desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        aid: userProfile.userId, // ← 必ず string
+        aid: userProfile.userId,
+        // 🚑 暫定: どこかでユーザ用 Zod が当たってるため
+        lineUserId: userProfile.userId,
+        displayName: userProfile.displayName ?? "",
+        ...(notifyEnabled ? { basicId: "@pickedBasicId" } : {}),
       };
 
       if (notifyEnabled) {
