@@ -55,7 +55,7 @@ export default function OpenFormClient() {
             bgcolor: link.bgcolor || "#555555",
             lid, // これで adminKey が一意に解決される
           };
-          console.log("[open] payload to /api/line =", payload);
+          console.log("[open] payload to /api/line 色=", payload.bgcolor);
           try {
             let sent = false;
             if ("sendBeacon" in navigator) {
