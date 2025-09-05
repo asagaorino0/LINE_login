@@ -335,73 +335,47 @@ export default function Home() {
       setFormDescription(nextDesc);
 
       // 2) payload を “undefined を含めない” 形で構築
-      // const payload: Record<string, any> = {
-      //   form: normalized,
-      //   title: String(nextTitle ?? ""),
-      //   desc: String(nextDesc ?? ""),
-      //   notify: notifyEnabled ? 1 : 0,
-      //   aid: userProfile.userId, // ← 必ず string
-      // };
-      // フロントの payload に一時的に追加
-      const payload: any = {
+      const payload: Record<string, any> = {
         form: normalized,
         title: String(nextTitle ?? ""),
         desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        aid: userProfile.userId,
-        // 🚑 暫定: どこかでユーザ用 Zod が当たってるため
-        lineUserId: userProfile.userId,
-        displayName: userProfile.displayName ?? "",
-        ...(notifyEnabled ? { basicId: "@pickedBasicId" } : {}),
+        aid: userProfile!.userId, // ← 必ず string
       };
 
-      if (notifyEnabled) {
-        const pickedBasicId = (selectedBasicId || basicId || "").trim();
-        if (!pickedBasicId) {
+      // const payload: any = {
+      //   form: normalized,
+      //   title: String(titleToSave ?? ""),
+      //   desc: String(descToSave ?? ""),
+      //   notify: notifyEnabled ? 1 : 0,
+      //   aid: userProfile!.userId, // ここは必ず string
+      // };
+      // 通知ONのときだけ basicId を付ける
+      if (payload.notify === 1) {
+        const picked = (selectedBasicId || basicId || "").trim();
+        if (!picked) {
           showToast("公式LINE（basicId）を選択してください", "error");
           return;
         }
-        payload.basicId = pickedBasicId;
+        payload.basicId = picked;
       }
 
-      console.info("[handleGenerateLink] payload to /api/links:", payload);
-
-      // 3) リクエスト（レスポンスは 1 回だけ読む）
-      // const r = await fetch("/api/links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      // const sourceHdr = r.headers.get("x-source"); // ← 重要
-      // const text = await r.text();
-      // let j: any = null;
-      // try { j = text ? JSON.parse(text) : null; } catch { }
-      // console.error("links-create error:", {
-      //   status: r.status,
-      //   xSource: sourceHdr,                           // ★ どのハンドラが返したか
-      //   bodySource: j?._source,                       // ★ 本文にも署名
-      //   code: j?.code || j?.message || "UNKNOWN",
-      //   keys: j ? Object.keys(j) : null,
-      //   raw: text
-      // });
-
-      const r = await fetch("/api/links", {////////////後で復活
+      const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      const text = await r.text(); // ← 一度だけ読む
+      const text = await r.text();
       let j: any = null;
-      try { j = text ? JSON.parse(text) : null; } catch { /* 非JSON */ }
-
+      try { j = text ? JSON.parse(text) : null; } catch { }
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
-        const details = j?.fields || j; // サーバが fields を返す場合に備え
-        console.error("links2-create error:", { status: r.status, code, detail: details });
-
+        console.error("links-create error:", { status: r.status, code, detail: j ?? text });
         const msgMap: Record<string, string> = {
-          NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
+          NO_ADMIN_ID: "（ログイン情報が無効です）",
           BAD_FORM_URL: "フォームURLが正しくありません。",
           NO_FORM: "フォームURLを入力してください。",
-          NO_BASIC_ID: "通知ONでは basicId が必須です。",
-          INVALID_USER_DATA: "送信データに不足があります。",
+          NO_BASIC_ID: "通知ON時は公式LINE（basicId）が必須です。",
         };
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
