@@ -30,7 +30,9 @@ export async function POST(req: NextRequest) {
   if (req.nextUrl.searchParams.get("ping") === "1") {
     return NextResponse.json({ ok: true, code: "PING_OK", route: "/api/links" }, { status: 200 });
   }
-
+  if (req.nextUrl.searchParams.get("ping") === "1") {
+    return NextResponse.json({ ok: true, code: "LINKS_POST_PING_OK" }, { status: 200 });
+  }
   try {
     const body = await req.json();
 
