@@ -20,6 +20,7 @@ type Body = {
   formUrl?: string;
   title?: string;
   desc?: string;
+  bgcolor?: string;
   // （任意）管理者の明示指定/補助
   adminId?: string;        // allowlist 用
   basicId?: string | null; // allowlist / cookie 経由時に使う
@@ -156,10 +157,10 @@ async function loadSecretsByAdminKey(adminKey: string): Promise<Secrets> {
 }
 
 /* ========= Flexメッセージ ========= */
-function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMessage {
+function buildFlexCard(formUrl: string, title?: string, desc?: string, bgcolor?: string): FlexMessage {
   return {
     type: "flex",
-    altText: title ? `【フォーム】${title}` : "Googleフォーム",
+    altText: title ? `【フォーム】${title}${bgcolor}` : "Googleフォーム",
     contents: {
       type: "bubble",
       header: {
@@ -169,7 +170,7 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMess
       body: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" } // ← 6桁
+          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: `${bgcolor}` } // ← 6桁
         ]
       },
       footer: {
@@ -186,7 +187,7 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMess
 /* ========= メイン ========= */
 export async function POST(req: NextRequest) {
   try {
-    const { userId, message, type, formUrl, title, desc, lid, adminId, basicId, aid, formId, exp, sig } =
+    const { userId, message, type, formUrl, title, desc, bgcolor, lid, adminId, basicId, aid, formId, exp, sig } =
       (await req.json()) as Body;
     // console.log(
     //   "lid********************************************************************", lid
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
     }
     // 送信
     if (type === "card" && formUrl) {
-      const flex = buildFlexCard(formUrl, title, desc);
+      const flex = buildFlexCard(formUrl, title, desc, bgcolor);
       try {
         await client.pushMessage(userId, flex);
         return ok(req, { success: true });
