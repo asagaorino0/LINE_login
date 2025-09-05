@@ -28,7 +28,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(newUser);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid user data", errors: error.errors });
+        return res.status(400).json({ message: "Invalid user data WWW", errors: error.errors });
       }
       res.status(500).json({ message: "Failed to create/update LINE user" });
     }

@@ -36,12 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST') {
     try {
       const validatedData = insertLineUserSchema.parse(req.body);
-      
+
       // Check if user already exists
       const existingUser = Array.from(lineUsers.values()).find(
         user => user.lineUserId === validatedData.lineUserId
       );
-      
+
       if (existingUser) {
         // Update existing user
         const updatedUser: LineUser = {
@@ -52,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         lineUsers.set(existingUser.id, updatedUser);
         return res.status(200).json(updatedUser);
       }
-      
+
       // Create new user
       const newUser: LineUser = {
         id: generateId(),
@@ -61,13 +61,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         pictureUrl: validatedData.pictureUrl || null,
         createdAt: new Date(),
       };
-      
+
       lineUsers.set(newUser.id, newUser);
       return res.status(201).json(newUser);
-      
+
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid user data", errors: error.errors });
+        return res.status(400).json({ message: "Invalid user data eeeee", errors: error.errors });
       }
       return res.status(500).json({ message: "Failed to create/update LINE user" });
     }
@@ -75,19 +75,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'GET') {
     const { lineUserId } = req.query;
-    
+
     if (typeof lineUserId === 'string') {
       const user = Array.from(lineUsers.values()).find(
         u => u.lineUserId === lineUserId
       );
-      
+
       if (!user) {
         return res.status(404).json({ message: "LINE user not found" });
       }
-      
+
       return res.status(200).json(user);
     }
-    
+
     return res.status(400).json({ message: "lineUserId parameter required" });
   }
 
