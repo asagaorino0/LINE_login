@@ -160,7 +160,7 @@ async function loadSecretsByAdminKey(adminKey: string): Promise<Secrets> {
 function buildFlexCard(formUrl: string, title?: string, desc?: string, bgcolor?: string): FlexMessage {
   return {
     type: "flex",
-    altText: title ? `【フォーム】${title}${bgcolor}` : "Googleフォーム",
+    altText: title ? `【フォーム】${title}` : "Googleフォーム",
     contents: {
       type: "bubble",
       header: {
@@ -199,7 +199,8 @@ export async function POST(req: NextRequest) {
       hasFormUrl: Boolean(formUrl),
       userId: userId ? userId.slice(0, 6) + "…" : null,
       via: lid ? "lid" : (aid && formId && exp && sig ? "signed" : (adminId ? "allowlist" : "cookie")),
-      basicId: basicId
+      basicId: basicId,
+      bgcolor
     });
     // 入力チェック
     if (!userId) return fail(req, { success: false, code: "NO_USER_ID" }, 400);
@@ -209,7 +210,7 @@ export async function POST(req: NextRequest) {
     const adminKey = await resolveAdminKey(req, adminId, { aid, formId, exp, sig }, lid, basicId ?? null);
     console.log("[/api/line] adminKey:", adminKey.includes("|")
       ? adminKey.split("|")[0].slice(0, 6) + "…|…"
-      : adminKey.slice(0, 6) + "…", adminKey, basicId);
+      : adminKey.slice(0, 6) + "…", adminKey, basicId, bgcolor);
     // 認証情報読込
     const { channelAccessToken, channelSecret } = await loadSecretsByAdminKey(adminKey);
     const client = new Client({ channelAccessToken, channelSecret });
