@@ -48,6 +48,16 @@ export async function POST(req: NextRequest) {
         hasAid: !!aid, aidMasked: aid ? aid.slice(0, 6) + "…" : null, basicIdIn
       }
     });
+    console.info("[/api/links] recv keys/types", {
+      keys: Object.keys(body),
+      form: typeof body.form,
+      title: typeof body.title,
+      desc: typeof body.desc,
+      notify: body.notify,
+      aid: typeof body.aid,
+      basicId: typeof body.basicId,
+    });
+
     // ★ クエリ ?debug=1 ならそのまま中身を返す（本番でも即確認できる）
     const debug = req.nextUrl.searchParams.get("debug") === "1";
     if (debug) {
@@ -107,7 +117,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, link: `${origin}/open?lid=${lid}`, lid }, { status: 201 });
 
   } catch (e: any) {
-    // Zod や Cosmos の詳細を必ず返す
     if (e?.errors && Array.isArray(e.errors)) {
       const fields = e.errors.map((er: any) => ({
         path: Array.isArray(er.path) ? er.path.join(".") : String(er.path),
@@ -116,11 +125,15 @@ export async function POST(req: NextRequest) {
         message: er.message,
       }));
       console.error("❌ /api/links validation error", fields);
-      return NextResponse.json({ ok: false, code: "INVALID_USER_DATA", fields }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, code: "INVALID_USER_DATA", fields },
+        { status: 400 }
+      );
     }
-    console.error("❌ /api/links failed:", { message: e?.message, code: e?.code, stack: e?.stack });
+    console.error("❌ /api/links failed:", e);
     return NextResponse.json({ ok: false, code: "LINKS_CREATE_FAILED" }, { status: 500 });
   }
+
 }
 
 
