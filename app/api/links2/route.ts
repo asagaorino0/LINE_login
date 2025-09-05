@@ -10,6 +10,9 @@ export async function POST(req: NextRequest) {
     { status: 200 }
   );
 }
+
+// （本処理はこの下に戻す前に、まず「HIT_LINKS2_POST」が返るか確認）
+
 export async function GET() {
   return NextResponse.json({ ok: true, code: "HIT_LINKS2_GET" }, { status: 200 });
 }
