@@ -364,32 +364,32 @@ export default function Home() {
         payload.basicId = pickedBasicId;
       }
 
-      console.info("[handleGenerateLink] payload to /api/links2:", payload);
+      console.info("[handleGenerateLink] payload to /api/links:", payload);
 
       // 3) リクエスト（レスポンスは 1 回だけ読む）
-      const r = await fetch("/api/links2", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const sourceHdr = r.headers.get("x-source"); // ← 重要
-      const text = await r.text();
-      let j: any = null;
-      try { j = text ? JSON.parse(text) : null; } catch { }
-      console.error("links2-create error:", {
-        status: r.status,
-        xSource: sourceHdr,                           // ★ どのハンドラが返したか
-        bodySource: j?._source,                       // ★ 本文にも署名
-        code: j?.code || j?.message || "UNKNOWN",
-        keys: j ? Object.keys(j) : null,
-        raw: text
-      });
-
-      // const r = await fetch("/api/links2", {////////////後で復活
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(payload),
+      // const r = await fetch("/api/links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      // const sourceHdr = r.headers.get("x-source"); // ← 重要
+      // const text = await r.text();
+      // let j: any = null;
+      // try { j = text ? JSON.parse(text) : null; } catch { }
+      // console.error("links-create error:", {
+      //   status: r.status,
+      //   xSource: sourceHdr,                           // ★ どのハンドラが返したか
+      //   bodySource: j?._source,                       // ★ 本文にも署名
+      //   code: j?.code || j?.message || "UNKNOWN",
+      //   keys: j ? Object.keys(j) : null,
+      //   raw: text
       // });
 
-      // const text = await r.text(); // ← 一度だけ読む
-      // let j: any = null;
-      // try { j = text ? JSON.parse(text) : null; } catch { /* 非JSON */ }
+      const r = await fetch("/api/links", {////////////後で復活
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const text = await r.text(); // ← 一度だけ読む
+      let j: any = null;
+      try { j = text ? JSON.parse(text) : null; } catch { /* 非JSON */ }
 
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
