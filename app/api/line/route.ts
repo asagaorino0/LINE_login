@@ -20,7 +20,6 @@ type Body = {
   formUrl?: string;
   title?: string;
   desc?: string;
-  bgcolor?: string;
   // （任意）管理者の明示指定/補助
   adminId?: string;        // allowlist 用
   basicId?: string | null; // allowlist / cookie 経由時に使う
@@ -157,7 +156,7 @@ async function loadSecretsByAdminKey(adminKey: string): Promise<Secrets> {
 }
 
 /* ========= Flexメッセージ ========= */
-function buildFlexCard(formUrl: string, title?: string, desc?: string, bgcolor?: string): FlexMessage {
+function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMessage {
   return {
     type: "flex",
     altText: title ? `【フォーム】${title}` : "Googleフォーム",
@@ -170,7 +169,7 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string, bgcolor?:
       body: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: `${bgcolor}` } // ← 6桁
+          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" } // ← 6桁
         ]
       },
       footer: {
@@ -187,21 +186,20 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string, bgcolor?:
 /* ========= メイン ========= */
 export async function POST(req: NextRequest) {
   try {
-    const { userId, message, type, formUrl, title, desc, bgcolor, lid, adminId, basicId, aid, formId, exp, sig } =
+    const { userId, message, type, formUrl, title, desc, lid, adminId, basicId, aid, formId, exp, sig } =
       (await req.json()) as Body;
     // console.log(
     //   "lid********************************************************************", lid
     // )
     // // ログ（機微は伏せる）
-    console.log("[/api/line] recv", {
-      type,
-      hasMsg: Boolean(message),
-      hasFormUrl: Boolean(formUrl),
-      userId: userId ? userId.slice(0, 6) + "…" : null,
-      via: lid ? "lid" : (aid && formId && exp && sig ? "signed" : (adminId ? "allowlist" : "cookie")),
-      basicId: basicId,
-      bgcolor
-    });
+    // console.log("[/api/line] recv", {
+    //   type,
+    //   hasMsg: Boolean(message),
+    //   hasFormUrl: Boolean(formUrl),
+    //   userId: userId ? userId.slice(0, 6) + "…" : null,
+    //   via: lid ? "lid" : (aid && formId && exp && sig ? "signed" : (adminId ? "allowlist" : "cookie")),
+    //   basicId: basicId
+    // });
     // 入力チェック
     if (!userId) return fail(req, { success: false, code: "NO_USER_ID" }, 400);
     if (!UID_RE.test(userId)) return fail(req, { success: false, code: "BAD_UID" }, 400);
@@ -210,7 +208,7 @@ export async function POST(req: NextRequest) {
     const adminKey = await resolveAdminKey(req, adminId, { aid, formId, exp, sig }, lid, basicId ?? null);
     console.log("[/api/line] adminKey:", adminKey.includes("|")
       ? adminKey.split("|")[0].slice(0, 6) + "…|…"
-      : adminKey.slice(0, 6) + "…", adminKey, basicId, bgcolor);
+      : adminKey.slice(0, 6) + "…", adminKey, basicId);
     // 認証情報読込
     const { channelAccessToken, channelSecret } = await loadSecretsByAdminKey(adminKey);
     const client = new Client({ channelAccessToken, channelSecret });
@@ -225,7 +223,7 @@ export async function POST(req: NextRequest) {
     }
     // 送信
     if (type === "card" && formUrl) {
-      const flex = buildFlexCard(formUrl, title, desc, bgcolor);
+      const flex = buildFlexCard(formUrl, title, desc);
       try {
         await client.pushMessage(userId, flex);
         return ok(req, { success: true });
