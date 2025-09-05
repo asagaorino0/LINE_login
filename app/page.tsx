@@ -368,7 +368,7 @@ export default function Home() {
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
         const details = j?.fields || j; // サーバが fields を返す場合に備え
-        console.error("links-create error:", { status: r.status, code, detail: details });
+        console.error("links2-create error:", { status: r, code, detail: details });
 
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（本番ドメインで）管理者としてログインしてください。",
