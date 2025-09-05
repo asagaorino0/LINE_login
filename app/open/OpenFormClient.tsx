@@ -52,6 +52,7 @@ export default function OpenFormClient() {
             formUrl: prefill,
             title: link.title || "Googleフォーム",
             desc: link.desc || "フォームに回答してください。",
+            bgcolor: link.bgcolor || "#555555",
             lid, // これで adminKey が一意に解決される
           };
           console.log("[open] payload to /api/line =", payload);

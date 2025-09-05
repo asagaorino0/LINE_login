@@ -15,38 +15,30 @@ export class GoogleFormsManager {
         console.error('Failed to extract form ID from URL:', data.formUrl);
         throw new Error('Invalid Google Form URL format');
       }
-
       // Require entry IDs to be provided - no more hardcoded values
       if (!entryIds || !entryIds.userId) {
         throw new Error('Entry IDs must be detected before form submission');
       }
-
       // Create form data for submission
       const formData = new FormData();
-
       console.log('Using detected entry IDs:', entryIds);
-
       // Log form data being submitted  
       console.log('Form submission data:', {
         formUrl: data.formUrl,
         userId: data.userId,
         message: data.additionalMessage
       });
-
       formData.append(entryIds.userId, data.userId);
       if (data.additionalMessage && entryIds.message) {
         formData.append(entryIds.message, data.additionalMessage);
       }
-
       // Submit to Google Forms - preserve URL structure (/d/e/ vs /d/)
       const submitUrl = this.buildSubmitUrl(data.formUrl, formId);
-
       const response = await fetch(submitUrl, {
         method: 'POST',
         body: formData,
         mode: 'no-cors', // Google Forms requires no-cors mode
       });
-
       // Note: With no-cors mode, we can't read the response
       // We assume success if no error was thrown
       return {
@@ -62,7 +54,16 @@ export class GoogleFormsManager {
   // Add detection method (copied from client/src/lib/googleForms.ts)
   public static async detectEntryIds(
     formUrl: string
-  ): Promise<{ userId?: string; message?: string; title?: string; description?: string; success: boolean; error?: string }> {
+  ): Promise<{
+    userId?: string;
+    message?: string;
+    title?: string;
+    description?: string;
+    success: boolean;
+    error?: string;
+    themeColor?: string,           // 追加
+    pageBackgroundColor?: string,  // 追加
+  }> {
     try {
       console.log('Attempting to detect entry IDs for form:', formUrl);
 
@@ -87,6 +88,8 @@ export class GoogleFormsManager {
                 message: entries[1],
                 title: data.title || undefined,
                 description: data.description || 'リンクを開くにはこちらをタップ',
+                themeColor: data.themeColor || undefined,          // ← 追加
+                pageBackgroundColor: data.pageBackgroundColor || undefined, // ← 追加
                 success: true,
               };
             }
@@ -145,12 +148,79 @@ export class GoogleFormsManager {
           if (id && id.length >= 8) found.add(`entry.${id}`);
         });
       });
+      // 6) 色の推定（theme-color優先 → スタイルからbackground-colorをサーチ → FB_PUBLIC_LOAD_DATA_から拾う）
+      let themeColor: string | undefined;
+      let pageBackgroundColor: string | undefined;
+
+      // a) <meta name="theme-color" content="#xxxxxx">
+      const metaThemeMatch = html.match(
+        /<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)["']/i
+      );
+      if (metaThemeMatch) {
+        themeColor = metaThemeMatch[1].trim();
+      }
+
+      // b) style内の background-color（Googleフォームのレイアウト用クラス付近を優先して探索）
+      if (!pageBackgroundColor) {
+        // freebird系クラスやbody直下のbackground-color指定をざっくり拾う
+        const styleBlockMatches = html.match(/<style[^>]*>[\s\S]*?<\/style>/gi) || [];
+        const bgRegex = /background-color\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsl[a]?\([^)]+\))/i;
+
+        for (const block of styleBlockMatches) {
+          // ヒントになるクラス名があれば優先（見つからなくてもフォールバック）
+          if (/freebird|formviewer|appsMaterial/i.test(block)) {
+            const m = block.match(bgRegex);
+            if (m) { pageBackgroundColor = m[1]; break; }
+          }
+        }
+        // 見つからない場合は全styleからフォールバック
+        if (!pageBackgroundColor) {
+          for (const block of styleBlockMatches) {
+            const m = block.match(bgRegex);
+            if (m) { pageBackgroundColor = m[1]; break; }
+          }
+        }
+      }
+
+      // c) FB_PUBLIC_LOAD_DATA_ から色コード候補を拾う（未公開仕様なのでベストエフォート）
+      if (!(themeColor && pageBackgroundColor)) {
+        const fbDataMatch = html.match(/FB_PUBLIC_LOAD_DATA_\s*=\s*([\s\S]+?]);/);
+        if (fbDataMatch) {
+          const raw = fbDataMatch[1];
+          // 配列中のCSSカラーらしき値を収集（#xxxxxx や rgba()/hsl()）
+          const colorCandidates = Array.from(raw.matchAll(
+            /(#[0-9a-fA-F]{6,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/g
+          )).map(m => m[1]);
+
+          // よく使われる順に採用（とりあえず先頭を採用、既に取れているものはスキップ）
+          if (!themeColor) themeColor = colorCandidates.find(c => /^#/.test(c)) || colorCandidates[0];
+          if (!pageBackgroundColor) {
+            pageBackgroundColor = colorCandidates.find(c => /rgba|hsla|^#[0-9a-fA-F]{6,8}$/.test(c));
+          }
+        }
+      }
+
+
+
+
+
+
+
 
       const uniqueEntries = Array.from(found);
       console.log('🎯 All found entry IDs:', uniqueEntries);
       if (uniqueEntries.length === 0) throw new Error('No entry IDs found in HTML');
-
-      return { userId: uniqueEntries[0], message: uniqueEntries[1], title, description, success: true };
+      // …既存のreturnの直前で返却値に含める
+      return {
+        userId: uniqueEntries[0],
+        message: uniqueEntries[1],
+        title,
+        description,
+        themeColor,           // 追加
+        pageBackgroundColor,  // 追加
+        success: true,
+      };
+      // return { userId: uniqueEntries[0], message: uniqueEntries[1], title, description, success: true };
     } catch (e: any) {
       console.log('❌ All detection methods failed:', e);
       return { success: false, error: 'Entry ID検出に失敗しました。フォームURL/公開状態をご確認ください。' };

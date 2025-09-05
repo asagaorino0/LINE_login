@@ -43,6 +43,7 @@ export default function Home() {
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
   const [formDescription, setFormDescription] = useState('リンクを開くにはこちらをタップ');
+  const [formBgcolor, setFormBgcolor] = useState('#555555');
   const [notifyEnabled, setNotifyEnabled] = useState(true);
 
   // 署名付きリンク（配布用）
@@ -136,6 +137,7 @@ export default function Home() {
           setFormUrl(j.formUrl);
           if (j.title) setFormTitle(j.title);
           if (j.desc) setFormDescription(j.desc);
+          if (j.bgcolor) setFormBgcolor(j.bgcolor);
         } else {
           showToast("リンクが無効または期限切れです", "error");
         }
@@ -325,10 +327,12 @@ export default function Home() {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
       let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
+      let nextBgcolor = formBgcolor || "#555555";
 
       try {
         const result = await GoogleFormsManager.detectEntryIds(normalized);
         if (result?.success) {
+          if (result.pageBackgroundColor) nextBgcolor = result.pageBackgroundColor
           if (result.title) nextTitle = result.title;
           if (result.description) nextDesc = result.description;
           setDetectedEntries({ userId: result.userId, message: result.message });
@@ -343,6 +347,7 @@ export default function Home() {
       // 画面表示用 state 更新
       setFormTitle(nextTitle);
       setFormDescription(nextDesc);
+      setFormBgcolor(nextBgcolor)
 
       // 2) payload を “undefined を含めない” 形で構築
       const payload: Record<string, any> = {
@@ -350,6 +355,7 @@ export default function Home() {
         title: String(nextTitle ?? ""),
         desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
+        bgcolor: nextBgcolor
         // aid: userProfile!.userId, // ← 必ず string
       };
 
@@ -478,6 +484,7 @@ export default function Home() {
         formUrl: generatedUrl,
         title: formTitle || "Googleフォーム",      // ← 既存
         desc: formDescription || "フォームに回答してください。", // ← 追加
+        bgcolor: formBgcolor || "#555555",
         ...(lid ? { lid } : { aid, formId, exp, sig }),
       };
       try {
@@ -686,16 +693,21 @@ export default function Home() {
                         <div className="mt-3">
                           <label className="text-sm text-gray-700">送信に使う公式LINE</label>
                           <select
+                            style={{ width: '100%' }}
                             value={selectedBasicId}                             // "" or "@xxxx"
                             onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value) }}
                           >
                             {!accounts.length && <option value="">（未登録）</option>}
-                            {accounts.map(a => (
-                              <option key={a.basicId} value={a.basicId}>
-                                {(a.channelName || a.basicId)}
-                                {/* （{a.basicId}） */}
-                              </option>
-                            ))}
+                            {accounts.map((a) => {
+                              const text = (a.channelName || a.basicId) + "（" + a.basicId + "）";
+                              const fontSize = text.length > 20 ? "12px" : "14px"; // 例: 20文字以上なら小さめに
+                              return (
+                                <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
+                                  {text}
+                                </option>
+                              );
+                            })}
+
                           </select>
                           {!accounts.length && (
                             <p className="text-xs text-amber-700 mt-1">
@@ -707,9 +719,11 @@ export default function Home() {
 
                       {notifyEnabled && (
                         <div className="border-t pt-4">
-                          <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4>
+                          {/* <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4> */}
                           <div className="space-y-2">
-                            <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+                            <p
+                              style={{ color: !accounts.length ? "red" : "" }}
+                              className="text-gray-600 mb-6 text-sm leading-relaxed">
                               回答通知を受け取るには、公式LINEの設定が必要です
                             </p>
                             <Button
@@ -721,7 +735,7 @@ export default function Home() {
                               className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
                               data-testid="button-line-login"
                             >
-                              {loginMutation.isPending ? '認証中...' : '通知設定画面へ'}
+                              {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
                             </Button>
                           </div>
                         </div>

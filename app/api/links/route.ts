@@ -29,13 +29,14 @@ type Body = {
   title?: string | null;
   desc?: string | null;
   notify?: number | boolean;
+  bgcolor?: string | null;
   basicId?: string | null;
   expiresAt?: number | 0;
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, basicId, expiresAt } = (await req.json()) as Body;
+    const { form, title, desc, notify, bgcolor, basicId, expiresAt } = (await req.json()) as Body;
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       formId,
       title: title ?? null,
       desc: desc ?? null,
+      bgcolor: bgcolor ?? null,
       notify: notify ? 1 : 0,
       createdAt: now,
       expiresAt: Number(expiresAt || 0) || 0,
