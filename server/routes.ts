@@ -6,6 +6,10 @@ import { z } from "zod";
 import { sendLineMessage } from "./line.js";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.use((req, _res, next) => {
+    console.log("[Express] sees:", req.method, req.path);
+    next();
+  });
   // LINE user management routes
   app.post("/api/line-users", async (req, res) => {
     try {
