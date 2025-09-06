@@ -10,29 +10,31 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Key, Save, Settings, LogOut, ArrowLeft } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { cn } from "@/lib/utils";
+import '../Timeline.css'
 
-export default function LineSettingsClient() {
+export default function LineSettingsClient({ onClick, login }: { onClick: () => void, login: () => void }) {
   const router = useRouter();
   const { user } = useAuth();
-  const [lineSettings, setLineSettings] = useState({ channelAccessToken: "", channelSecret: "", liffId: "" });
+  const [lineSettings, setLineSettings] = useState({ channelName: "", channelSecret: "", channelAccessToken: "", liffId: "" });
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const didRunRef = useRef(false);
   const [loading, setLoading] = useState(false);
-  const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
-  const shopId = ""; // 必要ならプロフィール等から取得して埋めてください（未設定なら default で保存）
+  const [enabled, setEnabled] = useState(false);
   const [lineUserId, setLineUserId] = useState<string>("");
+  const [value, setValue] = useState<string>("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/line-secrets", { cache: "no-store" });
-        if (r.ok) {
-          const j = await r.json();
-          if (j?.exists) setFingerprints(j.fingerprints ?? null);
-        }
-      } catch { }
-    })();
-  }, []);
+  // useEffect(() => {
+  //   (async () => {
+  //     try {
+  //       const r = await fetch("/api/line-secrets", { cache: "no-store" });
+  //       if (r.ok) {
+  //         const j = await r.json();
+  //         if (j?.exists) setFingerprints(j.fingerprints ?? null);
+  //       }
+  //     } catch { }
+  //   })();
+  // }, []);
 
   // ② LIFF ログイン済みなら /api/line-admin を呼んで admin/uid クッキーをサーバでセット
   useEffect(() => {
@@ -55,11 +57,6 @@ export default function LineSettingsClient() {
     })().catch(() => { });
   }, []);
 
-  const handleBackHome = () => router.push("/");
-  const handleSignOut = async () => {
-    await fetch("/api/admin-logout", { method: "POST" }).catch(() => { });
-    router.replace("/");
-  };
   // ③ 保存時は lineUserId を送らない（サーバが cookie の uid を id に使う）
   const handleSaveLineSettings = async () => {
     if (!lineSettings.channelAccessToken || !lineSettings.channelSecret) {
@@ -77,7 +74,7 @@ export default function LineSettingsClient() {
       if (!res.ok) throw new Error(text || "save failed");
       setShowSuccessMessage(true);
       setTimeout(() => setShowSuccessMessage(false), 3000);
-      setLineSettings({ channelAccessToken: "", channelSecret: "", liffId: "" });
+      setLineSettings({ channelName: "", channelSecret: "", channelAccessToken: "", liffId: "" });
     } catch (e: any) {
       alert(`保存失敗: ${e?.message ?? e}`);
     } finally {
@@ -87,41 +84,70 @@ export default function LineSettingsClient() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <Button variant="ghost" size="sm" onClick={handleBackHome}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                戻る
-              </Button>
-              <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-                <Settings className="w-5 h-5 text-white" />
-              </div>
-              <h1 className="text-xl font-semibold text-gray-900">LINE設定管理</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">
-                {user?.name || user?.email?.split('@')[0]}さん
-              </span>
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                <LogOut className="mr-2 h-4 w-4" />
-                ログアウト
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* メイン */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 pb-4">
         {/* タイトル */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">LINE API設定</h2>
+        <div className="mb-4">
+          {/* <h2 className="text-2xl font-bold text-gray-900 mb-2">LINE API設定</h2> */}
           <p className="text-gray-600">
-            LINE公式アカウントのAPI設定を管理します。設定後、Google Forms連携が利用可能になります。
+            {/* LINE公式アカウントのAPI設定を管理します。 */}
+            設定後、<strong>フォーム回答通知機能</strong>が利用可能になります。
           </p>
+        </div>
+        {/* タイムライン */}
+        <div className="mt-3 text-center">
+          <div
+            // style={{ width: "210px" }}
+            className="mt-2">
+            {value === "" &&
+              <ol className="timeline-003">
+                <li>step1</li>
+                <li>step2</li>
+                <li>step3</li>
+                <li>step4</li>
+                <li>step5</li>
+              </ol>}
+            {value === "1" &&
+              <ol className="timeline-003">
+                <li className="current">step1</li>
+                <li>step2</li>
+                <li>step3</li>
+                <li>step4</li>
+                <li>step5</li>
+              </ol>}
+            {value === "2" &&
+              <ol className="timeline-003">
+                <li className="prev">step1</li>
+                <li className="current">step2</li>
+                <li>step3</li>
+                <li>step4</li>
+                <li>step5</li>
+              </ol>}
+            {value === "3" &&
+              <ol className="timeline-003">
+                <li className="prev">step1</li>
+                <li className="prev">step2</li>
+                <li className="current">step3</li>
+                <li>step4</li>
+                <li>step5</li>
+              </ol>}
+            {value === "4" &&
+              <ol className="timeline-003">
+                <li className="prev">step1</li>
+                <li className="prev">step2</li>
+                <li className="prev">step3</li>
+                <li className="current">step4</li>
+                <li>step5</li>
+              </ol>}
+            {value === "5" &&
+              <ol className="timeline-003">
+                <li className="prev">step1</li>
+                <li className="prev">step2</li>
+                <li className="prev">step3</li>
+                <li className="prev">step4</li>
+                <li className="current">step5</li>
+              </ol>}
+          </div>
         </div>
 
         {/* 設定カード */}
@@ -132,8 +158,15 @@ export default function LineSettingsClient() {
                 <Key className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">API認証情報</h3>
-                <p className="text-sm text-gray-600">LINE Developers Consoleから取得した情報を入力してください</p>
+                <h3 className="text-lg font-semibold text-gray-900">チャンネル基本設定</h3>
+                <p className="text-sm text-gray-600">
+                  <span className="M7eMe">
+                    <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                      LINE Developers Console
+                    </a>
+                  </span>
+                  から取得
+                </p>
               </div>
             </div>
 
@@ -142,8 +175,7 @@ export default function LineSettingsClient() {
                 ✓ LINE API設定が正常に保存されました！
               </div>
             )}
-
-            {fingerprints && (
+            {/* {fingerprints && (
               <div className="mb-4 text-xs text-gray-600">
                 <div>保存済みフィンガープリント（照合用・平文は表示しません）</div>
                 <ul className="list-disc ml-5">
@@ -152,20 +184,19 @@ export default function LineSettingsClient() {
                   {fingerprints.channelAccessToken && <li>Access Token: {fingerprints.channelAccessToken}</li>}
                 </ul>
               </div>
-            )}
+            )} */}
             <div className="space-y-6">
               <div className="space-y-2">
-                <label htmlFor="channelAccessToken" className="text-sm font-medium text-gray-700">チャンネルアクセストークン *</label>
+                <label htmlFor="channelSecret" className="text-sm font-medium text-gray-700">チャネル名 *</label>
                 <Input
-                  id="channelAccessToken"
-                  type="password"
-                  placeholder="チャンネルアクセストークンを入力"
-                  value={lineSettings.channelAccessToken}
-                  onChange={(e) => setLineSettings({ ...lineSettings, channelAccessToken: e.target.value })}
+                  id="channelSecret"
+                  type="text"
+                  placeholder="チャネル名を入力"
+                  value={lineSettings.channelName}
+                  onChange={(e) => { setLineSettings({ ...lineSettings, channelName: e.target.value }), setValue("1") }}
                 />
-                <p className="text-xs text-gray-500">LINE Developers Console → チャンネル設定 → Messaging API設定から取得</p>
+                <p className="text-xs text-gray-500">LINE Developers Console →  <strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内</p>
               </div>
-
               <div className="space-y-2">
                 <label htmlFor="channelSecret" className="text-sm font-medium text-gray-700">チャンネルシークレット *</label>
                 <Input
@@ -173,38 +204,93 @@ export default function LineSettingsClient() {
                   type="password"
                   placeholder="チャンネルシークレットを入力"
                   value={lineSettings.channelSecret}
-                  onChange={(e) => setLineSettings({ ...lineSettings, channelSecret: e.target.value })}
+                  onChange={(e) => { setLineSettings({ ...lineSettings, channelSecret: e.target.value }), setValue("2") }}
                 />
-                <p className="text-xs text-gray-500">LINE Developers Console → チャンネル設定 → Basic settingsから取得</p>
+                <p className="text-xs text-gray-500">LINE Developers Console →  <strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内</p>
               </div>
-
               <div className="space-y-2">
-                <label htmlFor="liffId" className="text-sm font-medium text-gray-700">LIFF ID</label>
-                <Input
-                  id="liffId"
-                  placeholder="LIFF IDを入力（例: 1234567890-abcdefgh）"
-                  value={lineSettings.liffId}
-                  onChange={(e) => setLineSettings({ ...lineSettings, liffId: e.target.value })}
-                />
-                <p className="text-xs text-gray-500">LINE Developers Console → LIFF → アプリ設定から取得（オプション）</p>
+                <label htmlFor="userId" className="text-sm font-medium text-gray-700">【確認】あなたのユーザーID</label>
+                <div
+                  className={cn(
+                    "flex h-10 w-full items-center rounded-md bg-gray-300 px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                    "overflow-x-auto whitespace-nowrap scrollbar-hide"/////横方向にスクロール可能、テキストを折り返さず一行で、バー非表示
+                  )}
+                >
+                  {lineUserId}
+                </div>
+                <p className="text-xs text-gray-500"><strong>上記は今ログインしているIDです。</strong></p>
+                <p className="text-xs text-gray-500"><strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内の<strong>あなたのユーザーID</strong>と合致している必要があります。</p>
               </div>
+              <div className="my-3 flex items-center space-x-2">
+                <input
+                  id="notify"
+                  type="checkbox"
+                  checked={enabled}
+                  onChange={(e) => { setEnabled(e.target.checked), setValue("3") }}
+                  className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                />
+                <label htmlFor="notify" className="text-base text-gray-700">
+                  ID 確認しました！合致してます。
+                </label>
+              </div>
+              {enabled ?
+                <>
+                  <div className="flex items-center space-x-3 mb-6">
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                      <Key className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Messaging API設定</h3>
+                      <p className="text-sm text-gray-600">
+                        <span className="M7eMe">
+                          <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                            LINE Developers Console
+                          </a>
+                        </span>
+                        から取得
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="liffId" className="text-sm font-medium text-gray-700">ボットのベーシックID *</label>
+                    <Input
+                      id="liffId"
+                      placeholder="例: @123abcde(９桁の英数字)"
+                      value={lineSettings.liffId}
+                      onChange={(e) => { setLineSettings({ ...lineSettings, liffId: e.target.value }), setValue("4") }}
+                    />
+                    <p className="text-xs text-gray-500">LINE Developers Console → <strong>Messaging API設定</strong> 内</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="channelAccessToken" className="text-sm font-medium text-gray-700">チャンネルアクセストークン *</label>
+                    <Input
+                      id="channelAccessToken"
+                      type="password"
+                      placeholder="チャネルアクセストークン（長期）を入力"
+                      value={lineSettings.channelAccessToken}
+                      onChange={(e) => { setLineSettings({ ...lineSettings, channelAccessToken: e.target.value }), setValue("5") }}
+                    />
+                    <p className="text-xs text-gray-500">LINE Developers Console → <strong>Messaging API設定</strong> 内</p>
+                  </div>
+                  <Button onClick={handleSaveLineSettings} disabled={loading} className="w-full bg-green-600 hover:bg-green-700">
+                    <Save className="mr-2 h-4 w-4" />
+                    {loading ? "保存中…" : "設定を保存"}
+                  </Button>
+                </> :
+                <Button onClick={login} disabled={loading} className="w-full bg-[#00be00]">
+                  ログイン
+                </Button>
 
-              <Button onClick={handleSaveLineSettings} disabled={loading} className="w-full bg-green-600 hover:bg-green-700">
-                <Save className="mr-2 h-4 w-4" />
-                {loading ? "保存中…" : "設定を保存"}
+                //   {loading ? "ログイン中…" : "ログイン"}
+                // </Button>
+              }
+              <Button onClick={() => onClick()} disabled={loading} className="w-full bg-gray-300 hover:bg-green-700">
+                キャンセル
               </Button>
             </div>
           </CardContent>
         </Card>
-
-        {/* 設定ガイド */}
-        <Card>
-          <CardContent className="pt-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">設定手順</h3>
-            {/* ...（省略：元と同じ）... */}
-          </CardContent>
-        </Card>
       </main>
-    </div>
+    </div >
   );
 }

@@ -12,6 +12,8 @@ import { apiRequest } from './lib/queryClient';
 import { GoogleFormsManager } from './lib/googleForms';
 import { liffManager, LiffProfile } from '@/lib/liff';
 import HomeClient from './(public)/HomeClient';
+import LineSettingsClient from './line-settings/client';
+import Howto from './line-settings/howto';
 
 export default function Home() {
   type Account = {
@@ -29,9 +31,9 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
 
   const [formUrl, setFormUrl] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('top')
   const [isAutoMode, setIsAutoMode] = useState(false);
-
+  const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
@@ -44,7 +46,7 @@ export default function Home() {
   const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
   const [formDescription, setFormDescription] = useState('リンクを開くにはこちらをタップ');
   const [formBgcolor, setFormBgcolor] = useState('#555555');
-  const [notifyEnabled, setNotifyEnabled] = useState(true);
+  const [notifyEnabled, setNotifyEnabled] = useState(false);
 
   // 署名付きリンク（配布用）
   const [signedLink, setSignedLink] = useState<string>("");
@@ -57,8 +59,21 @@ export default function Home() {
   const linkCtxRef = useRef<{ lid?: string; aid?: string } | null>(null);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
 
-  // どこかで一度だけ読み取る（isLoggedIn や isAdmin 変化時にも読むとわかりやすい）
+  const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
   // 管理者ログイン後 or isAdmin 有効時に取得
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/line-secrets", { cache: "no-store" });
+        if (r.ok) {
+          const j = await r.json();
+          if (j?.exists)
+            setFingerprints(j.fingerprints ?? null);
+        }
+      } catch { }
+    })();
+  }, []);
+
   const firedAdminLoginRef = useRef(false);
   const setAdminCookie = useMutation<
     void,
@@ -83,10 +98,9 @@ export default function Home() {
   }, [userProfile?.userId]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (isTab === "top") return;
     if (!userProfile?.userId) return; // ★ クッキー準備ができてから
-    // if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
-
+    if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
     let aborted = false;
     (async () => {
       try {
@@ -126,7 +140,6 @@ export default function Home() {
     const lid = sp.get("lid");
     const formParam = sp.get("form");         // ←従来方式も残す
     const notifyParam = sp.get("notify");
-
     if (lid) {
       setIsAutoMode(true);
       (async () => {
@@ -146,13 +159,36 @@ export default function Home() {
       setFormUrl(decodeURIComponent(formParam));
       setIsAutoMode(true);
     }
-
     if (notifyParam === "0") setNotifyEnabled(false);
     if (notifyParam === "1") setNotifyEnabled(true);
   }, []);
 
 
   // ---- LIFF init ---------------------------------------------------------
+  const relogin = async () => {
+    try {
+      await liffManager.init();
+      // いったんログアウト
+      if (liffManager.isLoggedIn()) {
+        liffManager.logout();
+      }
+      // 再ログイン（このとき LINE アカウント選択が出る）
+      await liffManager.login();
+      // ログイン後にプロフィール取得
+      if (liffManager.isLoggedIn()) {
+        const profile = await liffManager.getProfile();
+        if (profile) {
+          setUserProfile(profile);
+          setIsLoggedIn(true);
+          await saveUserToBackend(profile);
+        }
+      }
+    } catch (e) {
+      console.error("再ログイン処理に失敗:", e);
+      setError("再ログインに失敗しました。ページをリロードしてください。");
+    }
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -600,7 +636,7 @@ export default function Home() {
           )}
 
           {/* 通常（管理者モード） */}
-          {!isAutoMode && (
+          {!isAutoMode && isTab !== 'secret' && isTab !== 'howto' && (
             <>
               <Card className="mb-6">
                 <CardContent className="pt-6">
@@ -608,7 +644,7 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
                   </div>
 
-                  {isAdmin ? (
+                  {isAdmin && isTab === 'admin' && (
                     <div className="space-y-4">
                       <div>
                         <Input
@@ -621,10 +657,10 @@ export default function Home() {
                             setSignedLink("");
                           }}
                           placeholder="ここにGoogleフォームのURLを入力"
-                          className="pr-5 text-gray-600 text-sm"
+                          className="pr-5 text-gray-500 text-sm bg-blue-200"
                         />
 
-                        <div className="mt-3 flex items-center space-x-2">
+                        <div className="my-3 flex items-center space-x-2">
                           <input
                             id="notify"
                             type="checkbox"
@@ -632,134 +668,139 @@ export default function Home() {
                             onChange={(e) => setNotifyEnabled(e.target.checked)}
                             className="h-4 w-4 text-green-600 border-gray-300 rounded"
                           />
-                          <label htmlFor="notify" className="text-sm text-gray-700">
-                            回答通知をLINEに送信する
+                          <label htmlFor="notify" className="text-base text-gray-700">
+                            回答通知を公式LINEで受け取る
                           </label>
                         </div>
-
-                        <Button
-                          onClick={handleGenerateLink}
-                          disabled={isDetecting}
-                          variant={formUrl ? 'default' : 'outline'}
-                          size="sm"
-                          className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
-                        >
-                          {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
-                        </Button>
+                        {notifyEnabled && (
+                          <>
+                            <label className="text-sm text-gray-700">受信用公式LINE</label>
+                            <select
+                              style={{ width: '100%' }}
+                              value={selectedBasicId} // "" or "@xxxx"
+                              onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value); }}
+                            >
+                              {!accounts.length && <option value="">（未登録）</option>}
+                              {accounts.map((a) => {
+                                const text = (a.channelName || a.basicId);
+                                const fontSize = text.length > 20 ? "12px" : "14px"; // 例: 20文字以上なら小さめに
+                                return (
+                                  <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
+                                    {text}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </>
+                        )}
+                        {formUrl &&
+                          <Button
+                            onClick={handleGenerateLink}
+                            disabled={isDetecting}
+                            variant={formUrl ? 'default' : 'outline'}
+                            size="sm"
+                            className="mt-2 w-full text-white border-blue-300 hover:bg-blue-50 mb-2"
+                          >
+                            {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
+                          </Button>
+                        }
                       </div>
 
                       <div className="space-y-3">
-                        <div className="p-4 bg-green-50 rounded-lg border">
-                          {signedLink && (
-                            <h4 className="text-sm font-semibold text-green-800 mb-2">
-                              連携リンクを生成しました。以下のリンクを GoogleフォームURL としてご利用ください。
-                            </h4>
-                          )}
-                          {!signedLink && (
-                            <h4 className="text-sm font-semibold text-green-800 mb-2">
-                              連携リンク（署名付き）を生成すると、ここに表示されます。
-                            </h4>
-                          )}
-                          <p className="text-xs text-green-700 mb-3">フォームのデータが公式LINEで利用可能になります</p>
-                          <div className="bg-white rounded border p-3 mb-3">
-                            <code className="text-xs font-mono text-gray-800 break-all">
-                              {isDetecting ? '...' : (signedLink || '・・・')}
-                            </code>
-                          </div>
-                        </div>
-
-                        <Button
-                          onClick={async () => {
-                            if (!signedLink) return;
-                            try {
-                              await navigator.clipboard.writeText(signedLink);
-                              showToast('リンクをコピーしました', 'success');
-                            } catch {
-                              showToast('コピーに失敗しました', 'error');
-                            }
-                          }}
-                          variant={signedLink ? 'default' : 'outline'}
-                          size="sm"
-                          className="mt-2 w-full text-blue-900 border-blue-300 hover:bg-blue-50 mb-2"
-                        >
-                          <Copy className="w-3 h-3 mr-1" />
-                          リンクをコピー
-                        </Button>
-                        <div className="text-xs text-gray-500 space-y-1 mb-2">
+                        {signedLink &&
+                          // ? null :
+                          <>
+                            <div className="p-4 bg-blue-100 rounded-lg border">
+                              {signedLink && (
+                                <h4 className="text-xs text-gray-800 mb-2">
+                                  連携リンクを生成しました。以下のリンクを <strong>GoogleフォームURL</strong>としてご利用ください。
+                                </h4>
+                              )}
+                              {/* {!signedLink && (
+                                <h4 className="text-sm text-blue-800 mb-2">
+                                  連携リンク（署名付き）を生成すると、ここに表示されます。
+                                </h4>
+                              )} */}
+                              {/* <p className="text-xs text-green-700 mb-3">フォームのデータが公式LINEで利用可能になります</p> */}
+                              <div className="bg-white rounded border p-3 mb-3">
+                                <code className="text-xs font-mono text-gray-800 break-all">
+                                  {isDetecting ? '...' : (signedLink || '・・・')}
+                                </code>
+                              </div>
+                            </div>
+                            {cookieInfo?.hasUid ?
+                              <Button
+                                onClick={async () => {
+                                  if (!signedLink) return;
+                                  try {
+                                    await navigator.clipboard.writeText(signedLink);
+                                    showToast('リンクをコピーしました', 'success');
+                                  } catch {
+                                    showToast('コピーに失敗しました', 'error');
+                                  }
+                                }}
+                                variant={signedLink ? 'default' : 'outline'}
+                                size="sm"
+                                className="mt-2 w-full text-white border-blue-300 hover:bg-blue-50 mb-2"
+                              >
+                                <Copy className="w-3 h-3 mr-1" />
+                                リンクをコピー
+                              </Button>
+                              : '未ログイン'}
+                          </>
+                        }
+                        {/* <div className="text-xs text-gray-500 space-y-1 mb-2">
                           <div>LIFF UID: {userProfile?.userId ?? "—(未ログイン)"}</div>
                           <div>cookie uid: {cookieInfo?.hasUid ? cookieInfo.uidMasked : "—(未セット)"}</div>
-                        </div>
-                        {/* 管理者モードのフォーム内 どこか適切な場所に */}
-                        <div className="mt-3">
-                          <label className="text-sm text-gray-700">送信に使う公式LINE</label>
-                          <select
-                            style={{ width: '100%' }}
-                            value={selectedBasicId}                             // "" or "@xxxx"
-                            onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value) }}
-                          >
-                            {!accounts.length && <option value="">（未登録）</option>}
-                            {accounts.map((a) => {
-                              const text = (a.channelName || a.basicId) + "（" + a.basicId + "）";
-                              const fontSize = text.length > 20 ? "12px" : "14px"; // 例: 20文字以上なら小さめに
-                              return (
-                                <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
-                                  {text}
-                                </option>
-                              );
-                            })}
-
-                          </select>
-                          {!accounts.length && (
-                            <p className="text-xs text-amber-700 mt-1">
-                              まず「管理者としてログイン」→ 設定ページで資格を登録してください。
-                            </p>
-                          )}
-                        </div>
+                        </div> */}
                       </div>
-
                       {notifyEnabled && (
-                        <div className="border-t pt-4">
-                          {/* <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4> */}
-                          <div className="space-y-2">
-                            <p
-                              style={{ color: !accounts.length ? "red" : "" }}
-                              className="text-gray-600 mb-6 text-sm leading-relaxed">
-                              回答通知を受け取るには、公式LINEの設定が必要です
-                            </p>
-                            <Button
-                              onClick={() =>
-                                // handleAdminLogin
-                                window.location.href = "/line-settings"
-                              }
-                              disabled={loginMutation.isPending}
-                              className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
-                              data-testid="button-line-login"
-                            >
-                              {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
-                            </Button>
-                          </div>
-                        </div>
+                        <>
+                          <div className="border-t pt-4">
+                            {/* <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4> */}
+                            <div className="space-y-2">
+                              <p
+                                style={{ color: !accounts.length ? "red" : "" }}
+                                className="text-gray-600 mb-6 text-xs leading-relaxed">
+                                回答通知を受け取るには、公式LINEの設定が必要です
+                              </p>
+                              <Button
+                                onClick={() => {
+                                  handleLineLogin();
+                                  setIsAdmin(false);
+                                  setIsTab('secret');
+                                }}
+                                disabled={loginMutation.isPending}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                                // className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
+                                data-testid="button-line-login"
+                              >
+                                {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
+                              </Button>
+                            </div>
+                          </div></>
                       )}
                     </div>
-                  ) : (
+                  )}
+                  {isTab === 'top' && (
                     <>
                       <div className="p-3 bg-amber-50 rounded-lg mb-4">
-                        <h5 className="text-xs font-semibold text-amber-800 mb-1">Googleフォーム側の重要な設定</h5>
-                        <p className="text-xs text-amber-700 mb-2">
-                          ⚠️LINEと連携するため、<strong style={{ color: 'red' }}>必ず次の設定をしてください</strong>
+                        <h5 className="text-sm font-semibold text-gray-800 mb-1">Googleフォーム側の重要な設定</h5>
+                        <p className="text-sm text-gray-700 mb-2">
+                          ⚠️LINEとの連携には、<strong style={{ color: 'red' }}>必ず次の設定をしてください</strong>
                         </p>
-                        <div className="bg白 rounded border p-2 mb-2">
-                          <p className="text-xs text-gray-600">
-                            📝 <strong>設定手順：</strong><br />
+                        <div className="bg-white rounded border p-2 mb-2">
+                          <p className="text-sm text-gray-600">
+                            <strong>＜設定手順＞</strong><br />
                             1. 質問１のタイトル: 「LINE User ID」<br />
                             2. 質問１の回答形式: 記述式（短文）<br />
-                            3. 質問１の必須: ON（メールアドレス設定は任意）
+                            3. 質問１の必須: ON<br />（上部メールアドレス設定は任意）
                           </p>
                         </div>
                       </div>
 
                       <Button
-                        onClick={() => setIsAdmin(true)}
+                        onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
                         className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2 text-white"
@@ -770,32 +811,60 @@ export default function Home() {
                   )}
                 </CardContent>
               </Card>
-
-              <div className="flex flex-row justify-center m-4">
-                <button onClick={() => setIsAdmin(false)} className="px-2">
-                  {isAdmin ? (
-                    <div className="rounded-full h-3 w-3 bg-primary" />
-                  ) : (
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  )}
-                </button>
-                <button onClick={() => setIsAdmin(true)} className="px-2">
-                  {!isAdmin ? (
-                    <div className="rounded-full h-3 w-3 bg-primary" />
-                  ) : (
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  )}
-                </button>
-              </div>
             </>
           )}
+          {isTab === 'secret' && (
+            <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true) }} login={relogin} />
+          )}
+          {isTab === 'howto' && (
+            <Howto onClick={() => { setIsTab('secret'), setIsAdmin(false) }} />
+          )}
+          <div className="flex flex-row justify-center m-4">
+            <div className="px-2">
+              {isTab === "top" ? (
+                <button className="rounded-full h-5 w-5 bg-primary" />
+              ) : (
+                <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                </button>
+              )}
+            </div>
+            <div className="px-2">
+              {isTab === "admin" ? (
+                <button className="rounded-full h-5 w-5 bg-primary" />
+              ) : (
+                <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                </button>
+              )}
+            </div>
+            {notifyEnabled ?
+              <div className="px-2">
+                {isTab === "secret" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("secret"), setIsAdmin(false) }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div> : null}
+            <div className="px-2">
+              {isTab === "howto" ? (
+                <button className="rounded-full h-5 w-5 bg-primary" />
+              ) : (
+                <button onClick={() => { setIsTab("howto"), setIsAdmin(false) }}>
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                </button>
+              )}
+            </div>
+          </div>
         </main>
 
         <footer className="max-w-md mx-auto px-4 py-6 text-center">
           <div className="text-xs text-gray-500 space-y-2">
-            <p>© 2024 LINE UID Collection System</p>
+            <p>© 2025 LINE UID Collection System by konoyubi</p>
             <div className="flex items-center justify-center space-x-4">
-              <a
+              {/* <a
                 href="https://github.com/asagaorino0/LINE_login.git"
                 className="hover:text-line-green transition-colors"
                 target="_blank"
@@ -811,7 +880,8 @@ export default function Home() {
               <a href="#" className="hover:text-line-green transition-colors">
                 <HelpCircle className="w-3 h-3 mr-1 inline" />
                 サポート
-              </a>
+              </a> */}
+
             </div>
           </div>
         </footer>
