@@ -352,19 +352,16 @@ export default function Home() {
       showToast("LINEログイン後にお試しください（userId 未取得）", "error");
       return;
     }
-
     setIsDetecting(true);
     setDetectedEntries(null);
     setLastDetectionResult(null);
     setSignedLink("");
-
     try {
       // 1) URL正規化 & 質問ID検出（失敗は致命的ではない）
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
       let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
       let nextBgcolor = formBgcolor || "#555555";
-
       try {
         const result = await GoogleFormsManager.detectEntryIds(normalized);
         if (result?.success) {
@@ -379,12 +376,10 @@ export default function Home() {
           showToast(`検出に失敗しました: ${result.error}`, "error");
         }
       } catch { /* ignore detection failure */ }
-
       // 画面表示用 state 更新
       setFormTitle(nextTitle);
       setFormDescription(nextDesc);
       setFormBgcolor(nextBgcolor)
-
       // 2) payload を “undefined を含めない” 形で構築
       const payload: Record<string, any> = {
         form: normalized,
@@ -394,14 +389,6 @@ export default function Home() {
         bgcolor: nextBgcolor
         // aid: userProfile!.userId, // ← 必ず string
       };
-
-      // const payload: any = {
-      //   form: normalized,
-      //   title: String(titleToSave ?? ""),
-      //   desc: String(descToSave ?? ""),
-      //   notify: notifyEnabled ? 1 : 0,
-      //   aid: userProfile!.userId, // ここは必ず string
-      // };
       // 通知ONのときだけ basicId を付ける
       if (payload.notify === 1) {
         const picked = (selectedBasicId || basicId || "").trim();
@@ -411,7 +398,6 @@ export default function Home() {
         }
         payload.basicId = picked;
       }
-
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -432,12 +418,10 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-
       // 4) 成功
       setSignedLink(j.link);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
-
       console.error("generate link failed:", e);
       showToast("連携リンク生成でエラーが発生しました", "error");
     } finally {
@@ -707,8 +691,10 @@ export default function Home() {
                       </div>
 
                       <div className="space-y-3">
+                        {isDetecting &&
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-line-green mx-auto mb-4" />
+                        }
                         {signedLink &&
-                          // ? null :
                           <>
                             <div className="p-4 bg-blue-100 rounded-lg border">
                               {signedLink && (
@@ -716,11 +702,6 @@ export default function Home() {
                                   連携リンクを生成しました。以下のリンクを <strong>GoogleフォームURL</strong>としてご利用ください。
                                 </h4>
                               )}
-                              {/* {!signedLink && (
-                                <h4 className="text-sm text-blue-800 mb-2">
-                                  連携リンク（署名付き）を生成すると、ここに表示されます。
-                                </h4>
-                              )} */}
                               {/* <p className="text-xs text-green-700 mb-3">フォームのデータが公式LINEで利用可能になります</p> */}
                               <div className="bg-white rounded border p-3 mb-3">
                                 <code className="text-xs font-mono text-gray-800 break-all">
