@@ -590,7 +590,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="max-w-md mx-auto px-4 py-6">
+        <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl">
           {/* 未ログイン & 自動モード */}
           {!isLoggedIn && isAutoMode && (
             <Card className="mb-6">
@@ -817,7 +817,7 @@ export default function Home() {
             <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true) }} login={relogin} />
           )}
           {isTab === 'howto' && (
-            <Howto onClick={() => { setIsTab('secret'), setIsAdmin(false) }} />
+            <Howto onClick={() => { setIsTab('admin'), setIsAdmin(true) }} />
           )}
           <div className="flex flex-row justify-center m-4">
             <div className="px-2">
