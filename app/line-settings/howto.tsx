@@ -13,8 +13,8 @@ export default function Howto({ onClick }: { onClick: () => void }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
-      <header>
+      {/* <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl"> */}
+      <main className="max-w-4xl mx-auto px-4 pb-4">
         <div className="mx-auto w-full px-4 py-4 sm:max-w-2xl md:max-w-6xl lg:max-w-6xl xl:max-w-7xl">
           <div>
             <h3 className="text-lg font-semibold text-gray-900 lg:text-xl">
@@ -22,9 +22,6 @@ export default function Howto({ onClick }: { onClick: () => void }) {
             </h3>
           </div>
         </div>
-      </header>
-
-      <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl">
         {/* 設定カード */}
         <Card className="mb-8">
           <CardContent className="py-4">
@@ -40,9 +37,8 @@ export default function Howto({ onClick }: { onClick: () => void }) {
               <label htmlFor="channelSecret" className="text-sm font-medium text-gray-700">
                 <p>1. Googleフォームの回答スプレッドシートを開く</p><br />
                 <p>2. メッセージを送りたいユーザーだけを絞り込む</p><br />
-                <p>3. LINE User ID（質問1）の列だけを残す</p><br />
-                <p>4. 重複が無いように整理し、1行目の「LINE User ID」という見出しは入れずに、IDだけをExcel又はWordにコピペする</p><br />
-                <span>5. 「名前を付けて保存」でファイル形式は、<strong>.csv</strong>（Excel）又は<strong>.txt</strong>（（Word）で保存する</span><br />
+                <p>3. LINE User ID（質問1）の列の1行目「LINE User ID」という見出しは入れずに、IDだけをExcel又はWordにコピペする</p><br />
+                <span>4. 「名前を付けて保存」でファイル形式は、<strong>.csv</strong>（Excel）又は<strong>.txt</strong>（（Word）で保存する</span><br />
                 <span style={{ color: 'red' }}> ⚠️ IDのみ １行目「LINE User ID」は不要、ID重複厳禁</span>
               </label>
             </div>

@@ -284,7 +284,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
                 //   {loading ? "ログイン中…" : "ログイン"}
                 // </Button>
               }
-              <Button onClick={() => onClick()} disabled={loading} className="w-full bg-gray-300 hover:bg-green-700">
+              <Button onClick={() => onClick()} disabled={loading} className="w-full bg-gray-300 hover:bg-gray-700">
                 キャンセル
               </Button>
             </div>

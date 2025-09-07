@@ -590,7 +590,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl">
+        <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
           {/* 未ログイン & 自動モード */}
           {!isLoggedIn && isAutoMode && (
             <Card className="mb-6">
@@ -803,9 +803,9 @@ export default function Home() {
                         onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
-                        className="w-full text-green-700 border-green-300 hover:bg-green-100 mt-2 text-white"
+                        className="w-full text-green-700 border-blue-300 hover:bg-blue-700 mt-2 text-white"
                       >
-                        はじめる
+                        準備完了！　はじめる
                       </Button>
                     </>
                   )}
