@@ -4,10 +4,6 @@ export interface GoogleFormsSubmission {
   formUrl: string;
 }
 
-// フォームURLごとのentry IDキャッシュ
-const entryIdCache = new Map<string, { userId: string; message?: string; timestamp: number }>();
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24時間
-
 export class GoogleFormsManager {
   /** Google フォームに送信 */
   static async submitToForm(
@@ -52,17 +48,6 @@ export class GoogleFormsManager {
     description?: string;
   }> {
     try {
-      // キャッシュから確認
-      const cacheKey = this.normalizeFormUrl(formUrl);
-      const cached = entryIdCache.get(cacheKey);
-      if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-        console.log("🚀 Using cached entry ID:", cached.userId);
-        return {
-          userId: cached.userId,
-          message: cached.message,
-          success: true,
-        };
-      }
       const normalized = this.normalizeFormUrl(formUrl);
       const formId = this.extractFormId(normalized);
       if (!formId) throw new Error("Could not extract form ID");
@@ -201,23 +186,13 @@ export class GoogleFormsManager {
       console.log("📝 HTML snippet (first 500 chars):", html.substring(0, 500));
       console.log("🔍 All patterns matched:", found.size > 0 ? Array.from(found) : "No matches");
 
-      const result = {
+      return {
         userId: uniqueEntries[0], // 必ず最初（最小の数字）のentry IDを使用
         message: uniqueEntries[1] || undefined,
         title,
         description,
         success: true,
       };
-
-      // キャッシュに保存
-      entryIdCache.set(cacheKey, {
-        userId: result.userId,
-        message: result.message,
-        timestamp: Date.now(),
-      });
-      console.log("💾 Cached entry ID for future use:", result.userId);
-
-      return result;
     } catch (err) {
       return {
         success: false,
