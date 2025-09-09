@@ -42,10 +42,10 @@ export default function OpenFormClient() {
           throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
         }
         // フォームURL正規化＆prefill生成（必要なら検出）
-        // const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
-        //   ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
-        //   : link.formUrl;
-        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
+        const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
+          ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
+          : link.formUrl;
+        // const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
         let userEntry = "entry.1587760013";
         try {
           console.log("[open] Detecting entry IDs for:", viewUrl);
