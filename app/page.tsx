@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
-import { Github, Shield, HelpCircle, Copy } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { ToastNotification, useToastNotification } from '../components/ui/toast-notification';
 
 import { apiRequest } from './lib/queryClient';
@@ -17,23 +17,23 @@ import Howto from './line-settings/howto';
 
 export default function Home() {
   type Account = {
-    basicId: string;            // ここは必ず string（空文字を許容）にする
+    basicId: string;
     channelName?: string;
     channelId?: string;
   };
 
-  // パス状態を管理
+  // ---- routing / accounts ------------------------------------------------
   const [pathname, setPathname] = useState<string>('');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedBasicId, setSelectedBasicId] = useState<string>("");
 
-  // ---- state -------------------------------------------------------------
+  // ---- app state ---------------------------------------------------------
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
 
   const [formUrl, setFormUrl] = useState('');
-  const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('top')
+  const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('top');
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,8 +41,9 @@ export default function Home() {
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
-  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string; message?: string } | null>(null);
-  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; message?: string; formUrl: string } | null>(null);
+  // 検出結果（ラベルは使わない。メッセージ欄も廃止）
+  const [detectedEntries, setDetectedEntries] = useState<{ userId?: string } | null>(null);
+  const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; formUrl: string } | null>(null);
 
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
@@ -54,6 +55,10 @@ export default function Home() {
   const [signedLink, setSignedLink] = useState<string>("");
   const [basicId, setBasicId] = useState<string>("");
 
+  // ★ 検出エラー表示 & 手入力オーバーライド（これを最優先）
+  const [detectionError, setDetectionError] = useState<string | null>(null);
+  const [overrideUserEntry, setOverrideUserEntry] = useState<string>(""); // 例: "entry.1587760013"
+
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
   const messageSentRef = useRef(false);
@@ -63,24 +68,25 @@ export default function Home() {
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
 
-  // パス名をセット（/open の場合は何も表示しない）
+  // ---- pathname ----------------------------------------------------------
   useEffect(() => {
     setPathname(window.location.pathname);
   }, []);
-  // 管理者ログイン後 or isAdmin 有効時に取得
+
+  // ---- secrets (for admin accounts list) --------------------------------
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch("/api/line-secrets", { cache: "no-store" });
         if (r.ok) {
           const j = await r.json();
-          if (j?.exists)
-            setFingerprints(j.fingerprints ?? null);
+          if (j?.exists) setFingerprints(j.fingerprints ?? null);
         }
-      } catch { }
+      } catch { /* noop */ }
     })();
   }, []);
 
+  // ---- set admin cookie --------------------------------------------------
   const firedAdminLoginRef = useRef(false);
   const setAdminCookie = useMutation<
     void,
@@ -104,10 +110,11 @@ export default function Home() {
     });
   }, [userProfile?.userId]);
 
+  // ---- fetch my accounts once admin ready -------------------------------
   useEffect(() => {
     if (isTab === "top") return;
-    if (!userProfile?.userId) return; // ★ クッキー準備ができてから
-    if (!cookieInfo?.hasUid) return; // ★ クッキー準備ができてから
+    if (!userProfile?.userId) return;
+    if (!cookieInfo?.hasUid) return;
     let aborted = false;
     (async () => {
       try {
@@ -132,7 +139,6 @@ export default function Home() {
     })();
     return () => { aborted = true; };
   }, [isAdmin, userProfile?.userId]);
-  // }, [isAdmin, cookieInfo?.hasUid]);
 
   useEffect(() => {
     fetch("/api/whoami", { credentials: "include", cache: "no-store" })
@@ -141,15 +147,20 @@ export default function Home() {
       .catch(() => setCookieInfo(null));
   }, [isLoggedIn, isAdmin]);
 
-  // 初回ロードで lid を解決（/open ページ以外の場合のみ）
+  // ---- resolve lid/form params on first load ----------------------------
   useEffect(() => {
-    // /open ページの場合はスキップ（OpenFormClient が処理するため）
     if (pathname === '/open') return;
 
     const sp = new URLSearchParams(window.location.search);
     const lid = sp.get("lid");
-    const formParam = sp.get("form");         // ←従来方式も残す
+    const formParam = sp.get("form");
     const notifyParam = sp.get("notify");
+    const entryParam = sp.get("entry"); // ★ 追加: 手入力 entry を URL から受け取る
+
+    if (entryParam) {
+      setOverrideUserEntry(ensureEntryFormat(entryParam));
+    }
+
     if (lid) {
       setIsAutoMode(true);
       (async () => {
@@ -161,6 +172,9 @@ export default function Home() {
           if (j.title) setFormTitle(j.title);
           if (j.desc) setFormDescription(j.desc);
           if (j.bgcolor) setFormBgcolor(j.bgcolor);
+
+          // サーバ保存の entry を将来読む場合に備えた互換（あれば反映）
+          if (j.entry) setOverrideUserEntry(ensureEntryFormat(String(j.entry)));
         } else {
           showToast("リンクが無効または期限切れです", "error");
         }
@@ -169,22 +183,19 @@ export default function Home() {
       setFormUrl(decodeURIComponent(formParam));
       setIsAutoMode(true);
     }
+
     if (notifyParam === "0") setNotifyEnabled(false);
     if (notifyParam === "1") setNotifyEnabled(true);
   }, [pathname]);
-
 
   // ---- LIFF init ---------------------------------------------------------
   const relogin = async () => {
     try {
       await liffManager.init();
-      // いったんログアウト
       if (liffManager.isLoggedIn()) {
         liffManager.logout();
       }
-      // 再ログイン（このとき LINE アカウント選択が出る）
       await liffManager.login();
-      // ログイン後にプロフィール取得
       if (liffManager.isLoggedIn()) {
         const profile = await liffManager.getProfile();
         if (profile) {
@@ -224,7 +235,55 @@ export default function Home() {
     if (formTitle) document.title = formTitle;
   }, [formTitle]);
 
-  // ---- prefill URL generation（自動モード用） ----------------------------
+  // ---- normalize view url + auto detection (debounced) ------------------
+  const viewUrlNormalized = useMemo(() => {
+    try {
+      return (GoogleFormsManager as any).normalizeFormUrl
+        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+        : formUrl;
+    } catch {
+      return formUrl;
+    }
+  }, [formUrl]);
+
+  const detectTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isAdmin || isTab !== 'admin') return;
+    if (!viewUrlNormalized) {
+      setDetectedEntries(null);
+      setDetectionError(null);
+      return;
+    }
+    // 500ms debounce
+    if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+    detectTimerRef.current = window.setTimeout(async () => {
+      setIsDetecting(true);
+      setDetectionError(null);
+      try {
+        const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
+        if (res?.success) {
+          setDetectedEntries({ userId: res.userId });
+          setLastDetectionResult(res.userId ? { userId: res.userId, formUrl: viewUrlNormalized } : null);
+          if (res.title) setFormTitle(res.title);
+          if (res.description) setFormDescription(res.description);
+        } else {
+          setDetectedEntries(null);
+          setDetectionError(res?.error || '検出に失敗しました');
+        }
+      } catch (e: any) {
+        setDetectedEntries(null);
+        setDetectionError(e?.message || '検出に失敗しました');
+      } finally {
+        setIsDetecting(false);
+      }
+    }, 500);
+    return () => {
+      if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewUrlNormalized, isAdmin, isTab]);
+
+  // ---- prefill URL generation (auto mode only) --------------------------
   useEffect(() => {
     (async () => {
       if (userProfile && formUrl && isAutoMode) {
@@ -244,7 +303,7 @@ export default function Home() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId]);
+  }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId, overrideUserEntry]);
 
   // ---- auto open once ----------------------------------------------------
   useEffect(() => {
@@ -294,65 +353,7 @@ export default function Home() {
     },
   });
 
-  // const adminLoginMutation = useMutation<LiffProfile, Error>({
-  //   mutationFn: async () => {
-  //     await liffManager.login();
-  //     const profile = await liffManager.getProfile();
-  //     if (!profile) throw new Error('Profile not available');
-  //     // サーバ側で uid クッキーをセット
-  //     await apiRequest("POST", "/api/line-admin", {
-  //       lineUserId: profile.userId,
-  //       displayName: profile.displayName,
-  //       pictureUrl: profile.pictureUrl ?? null,
-  //     });
-  //     return profile;
-  //   },
-  //   onSuccess: (profile) => {
-  //     setUserProfile(profile);
-  //     setIsLoggedIn(true);
-  //     setError(null);
-  //     window.location.href = "/line-settings";
-  //   },
-  //   onError: (e) => {
-  //     console.error("Admin login failed:", e);
-  //     setError("管理者ログインに失敗しました。もう一度お試しください。");
-  //   },
-  // });
-
-  // const adminLoginMutation = useMutation<LiffProfile, Error>({
-  //   mutationFn: async () => {
-  //     await liffManager.login();
-  //     const profile = await liffManager.getProfile();
-  //     if (!profile) throw new Error('Profile not available');
-
-  //     // サーバーに userId を渡す
-  //     await apiRequest("POST", "/api/line-admin", {
-  //       lineUserId: profile.userId,   // ★ ここで渡す
-  //       displayName: profile.displayName,
-  //       pictureUrl: profile.pictureUrl ?? null,
-  //     });
-  //     return profile;
-  //   },
-  //   onSuccess: (profile) => {
-  //     setUserProfile(profile);
-  //     setIsLoggedIn(true);
-  //     setError(null);
-  //     // window.location.href = "/line-settings";
-  //   },
-  //   onError: (e) => {
-  //     console.error("Admin login failed:", e);
-  //     setError("管理者ログインに失敗しました。もう一度お試しください。");
-  //   },
-  // });
-
-  // const handleAdminLogin = () => {
-  //   if (!adminLoginMutation.isPending) {
-  //     setError(null);
-  //     adminLoginMutation.mutate();
-  //   }
-  // };
-
-  // ---- 署名付きリンク生成（管理画面のボタン）---------------------------
+  // ---- 署名付きリンク生成（admin ボタン）------------------------------
   const handleGenerateLink = async () => {
     if (!formUrl.trim()) {
       showToast("フォームURLを先に入力してください", "error");
@@ -363,43 +364,36 @@ export default function Home() {
       return;
     }
     setIsDetecting(true);
-    setDetectedEntries(null);
-    setLastDetectionResult(null);
     setSignedLink("");
     try {
-      // 1) URL正規化 & 質問ID検出（失敗は致命的ではない）
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
       let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
       let nextBgcolor = formBgcolor || "#555555";
+
+      // 検出（任意）
       try {
         const result = await GoogleFormsManager.detectEntryIds(normalized);
         if (result?.success) {
-          // if (result.pageBackgroundColor) nextBgcolor = result.pageBackgroundColor
           if (result.title) nextTitle = result.title;
           if (result.description) nextDesc = result.description;
-          setDetectedEntries({ userId: result.userId, message: result.message });
-          if (result.userId) {
-            setLastDetectionResult({ userId: result.userId, message: result.message, formUrl: normalized });
-          }
-        } else if (result && !result.success) {
-          showToast(`検出に失敗しました: ${result.error}`, "error");
+          setDetectedEntries({ userId: result.userId });
+          if (result.userId) setLastDetectionResult({ userId: result.userId, formUrl: normalized });
         }
-      } catch { /* ignore detection failure */ }
-      // 画面表示用 state 更新
+      } catch { /* ignore */ }
+
       setFormTitle(nextTitle);
       setFormDescription(nextDesc);
-      setFormBgcolor(nextBgcolor)
-      // 2) payload を “undefined を含めない” 形で構築
+      setFormBgcolor(nextBgcolor);
+
+      // payload 構築（※ 将来サーバ保存するなら使う）
       const payload: Record<string, any> = {
         form: normalized,
         title: String(nextTitle ?? ""),
         desc: String(nextDesc ?? ""),
         notify: notifyEnabled ? 1 : 0,
-        bgcolor: nextBgcolor
-        // aid: userProfile!.userId, // ← 必ず string
+        bgcolor: nextBgcolor,
       };
-      // 通知ONのときだけ basicId を付ける
       if (payload.notify === 1) {
         const picked = (selectedBasicId || basicId || "").trim();
         if (!picked) {
@@ -408,6 +402,12 @@ export default function Home() {
         }
         payload.basicId = picked;
       }
+
+      // 手入力 entry をサーバにも渡しておく（互換用）
+      if (overrideUserEntry.trim()) {
+        payload.entry = ensureEntryFormat(overrideUserEntry);
+      }
+
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -415,7 +415,7 @@ export default function Home() {
       });
       const text = await r.text();
       let j: any = null;
-      try { j = text ? JSON.parse(text) : null; } catch { }
+      try { j = text ? JSON.parse(text) : null; } catch { /* noop */ }
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
         console.error("links-create error:", { status: r.status, code, detail: j ?? text });
@@ -428,8 +428,14 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-      // 4) 成功
-      setSignedLink(j.link);
+
+      // ★ 生成リンクに entry= を付与して返す（ここが肝）
+      const baseLink: string = j.link;
+      const withEntry = overrideUserEntry.trim()
+        ? `${baseLink}${baseLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`
+        : baseLink;
+
+      setSignedLink(withEntry);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
@@ -439,21 +445,23 @@ export default function Home() {
     }
   };
 
-
-
-  // ---- prefill url builder（自動モードで使う） --------------------------
+  // ---- prefill url builder（自動モードで使う：メッセージは完全廃止） ----
   const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
     try {
       const baseUrl = originalUrl.split('?')[0];
+
+      // ★ 優先度：手入力 > 直近検出 > その場検出 > ダミー
       let userIdEntry =
-        lastDetectionResult?.formUrl === originalUrl ? lastDetectionResult.userId : detectedEntries?.userId;
+        (overrideUserEntry.trim() ? ensureEntryFormat(overrideUserEntry) : "") ||
+        (lastDetectionResult?.formUrl === originalUrl ? lastDetectionResult.userId : detectedEntries?.userId);
+
       if (!userIdEntry) {
         try {
           const detection = await GoogleFormsManager.detectEntryIds(originalUrl);
           if (detection.success && detection.userId) {
             userIdEntry = detection.userId;
-            setLastDetectionResult({ userId: detection.userId, message: detection.message, formUrl: originalUrl });
-            setDetectedEntries({ userId: detection.userId, message: detection.message });
+            setLastDetectionResult({ userId: detection.userId, formUrl: originalUrl });
+            setDetectedEntries({ userId: detection.userId });
             if (detection.title) setFormTitle(detection.title);
             if (detection.description) setFormDescription(detection.description);
           }
@@ -461,26 +469,31 @@ export default function Home() {
       }
 
       userIdEntry = userIdEntry ?? 'entry.##########';
-      const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
-      if (detectedEntries?.message) return `${prefillUrl}&${detectedEntries.message}=`;
-      return prefillUrl;
+
+      const params = new URLSearchParams();
+      params.set('usp', 'pp_url');
+      params.set(userIdEntry, userId);
+
+      return `${baseUrl}?${params.toString()}`;
     } catch (e) {
       console.error('Failed to generate prefill URL:', e);
       return originalUrl;
     }
   };
 
-  // ---- derived urls ------------------------------------------------------
-  const viewUrlNormalized = useMemo(() => {
-    try {
-      return (GoogleFormsManager as any).normalizeFormUrl
-        ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
-        : formUrl;
-    } catch {
-      return formUrl;
+  // helper: "entry.123" の形に整える（数字だけ渡されてもOK）
+  function ensureEntryFormat(s: string): string {
+    const t = s.trim();
+    if (!t) return t;
+    if (/^\d+$/.test(t)) return `entry.${t}`;
+    if (!/^entry\./i.test(t)) {
+      const num = t.match(/(\d{5,})/);
+      if (num) return `entry.${num[1]}`;
     }
-  }, [formUrl]);
+    return t;
+  }
 
+  // ---- preview url (card image) -----------------------------------------
   const previewUrl = useMemo(() => {
     if (!viewUrlNormalized) return '';
     const params = new URLSearchParams({
@@ -498,13 +511,12 @@ export default function Home() {
     if (!userProfile || !generatedUrl) return;
 
     const qs = new URLSearchParams(window.location.search);
-    const lid = qs.get("lid") || "";                 // ★ 追加：lid を読む
+    const lid = qs.get("lid") || "";
     const aid = qs.get("aid") || "";
     const formId = qs.get("formId") || (viewUrlNormalized?.match(/\/forms\/d\/e\/([a-zA-Z0-9_-]+)\//)?.[1] ?? "");
     const exp = Number(qs.get("exp") || "0");
     const sig = qs.get("sig") || "";
     const debug = qs.get("debug") === "1";
-
 
     if (!messageSentRef.current && notifyEnabled) {
       messageSentRef.current = true;
@@ -512,8 +524,8 @@ export default function Home() {
         userId: userProfile.userId,
         type: "card" as const,
         formUrl: generatedUrl,
-        title: formTitle || "Googleフォーム",      // ← 既存
-        desc: formDescription || "フォームに回答してください。", // ← 追加
+        title: formTitle || "Googleフォーム",
+        desc: formDescription || "フォームに回答してください。",
         bgcolor: formBgcolor || "#555555",
         ...(lid ? { lid } : { aid, formId, exp, sig }),
       };
@@ -533,7 +545,6 @@ export default function Home() {
           });
           const t = await r.text();
           console.log("[send] fetch status:", r.status, "body:", t);
-          // 失敗時はユーザーにも見えるように
           if (!r.ok) {
             try {
               const j = JSON.parse(t);
@@ -547,10 +558,8 @@ export default function Home() {
         console.warn("send-message failed:", e);
         showToast("送信時にエラーが発生しました", "error");
       }
-
     }
 
-    // ★ デバッグ時は遷移しない
     if (!debug && !navigatedRef.current) {
       navigatedRef.current = true;
       const go = () => window.location.replace(generatedUrl);
@@ -558,12 +567,8 @@ export default function Home() {
     }
   };
 
-
   // ---- UI ---------------------------------------------------------------
-  // /open パスの場合は何も表示しない（OpenFormClient が完全に処理する）
-  if (pathname === '/open') {
-    return null;
-  }
+  if (pathname === '/open') return null;
 
   if (!isInitialized) {
     return (
@@ -651,13 +656,73 @@ export default function Home() {
                           value={formUrl}
                           onChange={(e) => {
                             setFormUrl(e.target.value);
-                            if (detectedEntries) setDetectedEntries(null);
-                            if (lastDetectionResult) setLastDetectionResult(null);
+                            setDetectedEntries(null);
+                            setLastDetectionResult(null);
                             setSignedLink("");
+                            setDetectionError(null);
                           }}
                           placeholder="ここにGoogleフォームのURLを入力"
                           className="pr-5 text-gray-500 text-sm bg-blue-200"
                         />
+
+                        {/* ENTRY ID パネル */}
+                        {formUrl ? (
+                          <div className="mt-3 p-3 rounded border bg-white">
+                            <div className="text-xs text-gray-700 mb-2 font-semibold">ENTRY ID 検出結果</div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">検出された欄（読み取り専用）</label>
+                                <Input
+                                  value={detectedEntries?.userId ?? ''}
+                                  readOnly
+                                  placeholder="未検出"
+                                  className="text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-600 mb-1">entryID を手入力（最優先）</label>
+                                <Input
+                                  value={overrideUserEntry}
+                                  onChange={(e) => setOverrideUserEntry(e.target.value)}
+                                  placeholder="例）entry.1587760013 または 1587760013"
+                                  className="text-xs"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="text-xs">
+                                {isDetecting ? <span className="text-blue-600">検出中...</span> :
+                                  detectionError ? <span className="text-red-600">検出エラー: {detectionError}</span> :
+                                    detectedEntries?.userId ? <span className="text-green-700">検出OK</span> :
+                                      <span className="text-gray-600">未検出（手入力をご利用ください）</span>
+                                }
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={() => {
+                                    if (!overrideUserEntry && !detectedEntries?.userId) {
+                                      showToast('entryID を入力してください', 'error');
+                                      return;
+                                    }
+                                    const u = ensureEntryFormat(overrideUserEntry || detectedEntries!.userId!);
+                                    setOverrideUserEntry(u);
+                                    showToast(`entryID を固定: ${u}`, 'success');
+                                  }}
+                                  variant="secondary"
+                                  size="sm"
+                                  className="text-xs"
+                                >
+                                  この entryID を使う
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-2">
+                              ※ 手入力がある場合は、生成URL・LINE送信ともに<strong>手入力を最優先</strong>します。
+                            </div>
+                          </div>
+                        ) : null}
 
                         <div className="my-3 flex items-center space-x-2">
                           <input
@@ -676,13 +741,13 @@ export default function Home() {
                             <label className="text-sm text-gray-700">受信用公式LINE</label>
                             <select
                               style={{ width: '100%' }}
-                              value={selectedBasicId} // "" or "@xxxx"
+                              value={selectedBasicId}
                               onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value); }}
                             >
                               {!accounts.length && <option value="">（未登録）</option>}
                               {accounts.map((a) => {
                                 const text = (a.channelName || a.basicId);
-                                const fontSize = text.length > 20 ? "12px" : "14px"; // 例: 20文字以上なら小さめに
+                                const fontSize = text.length > 20 ? "12px" : "14px";
                                 return (
                                   <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
                                     {text}
@@ -712,12 +777,9 @@ export default function Home() {
                         {signedLink &&
                           <>
                             <div className="p-4 bg-blue-100 rounded-lg border">
-                              {signedLink && (
-                                <h4 className="text-xs text-gray-800 mb-2">
-                                  連携リンクを生成しました。以下のリンクを <strong>GoogleフォームURL</strong>としてご利用ください。
-                                </h4>
-                              )}
-                              {/* <p className="text-xs text-green-700 mb-3">フォームのデータが公式LINEで利用可能になります</p> */}
+                              <h4 className="text-xs text-gray-800 mb-2">
+                                連携リンクを生成しました。以下のリンクを <strong>GoogleフォームURL</strong>としてご利用ください。
+                              </h4>
                               <div className="bg-white rounded border p-3 mb-3">
                                 <code className="text-xs font-mono text-gray-800 break-all">
                                   {isDetecting ? '...' : (signedLink || '・・・')}
@@ -745,19 +807,13 @@ export default function Home() {
                               : '未ログイン'}
                           </>
                         }
-                        {/* <div className="text-xs text-gray-500 space-y-1 mb-2">
-                          <div>LIFF UID: {userProfile?.userId ?? "—(未ログイン)"}</div>
-                          <div>cookie uid: {cookieInfo?.hasUid ? cookieInfo.uidMasked : "—(未セット)"}</div>
-                        </div> */}
                       </div>
+
                       {notifyEnabled && (
                         <>
                           <div className="border-t pt-4">
-                            {/* <h4 className="text-sm font-semibold text-gray-800 mb-3">フォーム回答通知機能</h4> */}
                             <div className="space-y-2">
-                              <p
-                                style={{ color: !accounts.length ? "red" : "" }}
-                                className="text-gray-600 mb-6 text-xs leading-relaxed">
+                              <p className="text-gray-600 mb-6 text-xs leading-relaxed" style={{ color: !accounts.length ? "red" : undefined }}>
                                 回答通知を受け取るには、公式LINEの設定が必要です
                               </p>
                               <Button
@@ -768,13 +824,13 @@ export default function Home() {
                                 }}
                                 disabled={loginMutation.isPending}
                                 className="w-full bg-green-600 hover:bg-green-700"
-                                // className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
                                 data-testid="button-line-login"
                               >
                                 {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
                               </Button>
                             </div>
-                          </div></>
+                          </div>
+                        </>
                       )}
                     </div>
                   )}

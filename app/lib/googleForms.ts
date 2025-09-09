@@ -1,15 +1,13 @@
 // --- GoogleFormsManager.ts ---
-// フォームの項目数が多い場合でも UID を安定検出する版（全文）
+// フォームの項目数が多い場合でも UID を安定検出する “UID専用” 版（message を完全撤去）
 
 export interface GoogleFormsSubmission {
   userId: string;
-  additionalMessage?: string;
   formUrl: string;
 }
 
 type DetectResult = {
   userId?: string;
-  message?: string;
   success: boolean;
   error?: string;
   title?: string;
@@ -19,24 +17,20 @@ type DetectResult = {
 type Candidate = { id: string; label?: string; kind?: string };
 
 export class GoogleFormsManager {
-  /** Google フォームに送信 */
+  /** Google フォームに送信（UIDのみ） */
   static async submitToForm(
     data: GoogleFormsSubmission,
-    entryIds?: { userId: string; message?: string }
+    entryIds?: { userId: string }
   ): Promise<{ success: boolean; timestamp: Date }> {
     try {
       const formId = this.extractFormId(data.formUrl);
       if (!formId) throw new Error("Invalid Google Form URL format");
-
       if (!entryIds || !entryIds.userId) {
-        throw new Error("Entry IDs must be detected before form submission");
+        throw new Error("Entry ID must be detected before form submission");
       }
 
       const formData = new FormData();
       formData.append(entryIds.userId, data.userId);
-      if (data.additionalMessage && entryIds.message) {
-        formData.append(entryIds.message, data.additionalMessage);
-      }
 
       const submitUrl = this.buildSubmitUrl(data.formUrl, formId);
       await fetch(submitUrl, {
@@ -61,90 +55,75 @@ export class GoogleFormsManager {
 
       const viewUrl = this.buildViewUrl(normalized, formId);
 
-      // — 1) HTML取得（URLバリアント×複数プロキシでフォールバック）
+      // HTML取得（バリアント×プロキシでねばる）
       const html = await this.fetchFormHtmlWithFallback(viewUrl);
-      if (!html) throw new Error("No HTML content received from proxy");
+      if (!html) throw new Error("No HTML content received");
 
-      // — 2) タイトル・説明
+      // タイトル/説明
       const title = html.match(/<title[^>]*>(.*?)<\/title>/i)?.[1]?.replace(/ - Google フォーム$/, "")?.trim();
       const description = html.match(/<meta[^>]+itemprop=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]?.trim();
 
-      // — 3) 候補抽出：FB_PUBLIC_LOAD_DATA_
+      // 候補抽出
       const fromFB = this.extractCandidatesFromFBData(html);
-
-      // — 4) 候補抽出：input/textarea/select や data-params
       const fromInputs = this.extractCandidatesFromInputs(html);
 
-      // — 5) 結合（ID重複はラベルありを優先）
+      // マージ
       const merged = new Map<string, Candidate>();
-      const merge = (c: Candidate[]) => {
-        for (const x of c) {
-          const prev = merged.get(x.id);
-          if (!prev) merged.set(x.id, x);
-          else if (!prev.label && x.label) merged.set(x.id, { ...prev, label: x.label, kind: x.kind ?? prev.kind });
-        }
-      };
-      merge(fromFB);
-      merge(fromInputs);
+      for (const c of [...fromFB, ...fromInputs]) {
+        const prev = merged.get(c.id);
+        if (!prev) merged.set(c.id, c);
+        else if (!prev.label && c.label) merged.set(c.id, { ...prev, label: c.label, kind: c.kind ?? prev.kind });
+      }
 
-      if (merged.size === 0) throw new Error("No entry IDs found");
+      // 見つかった entry.* を列挙（保険）
+      const allEntryIds = [...merged.keys()];
+      if (allEntryIds.length === 0) {
+        // 最後の最後の保険：HTML全体から entry を直接抜く
+        const crude = Array.from(html.matchAll(/entry\.(\d{8,})/g)).map((m: any) => `entry.${m[1]}`);
+        if (crude.length === 0) throw new Error("No entry IDs found");
+        // 以前は warn でしたが静かに（必要ならこの行を消してください）
+        console.debug("fallback: crude entries only", crude.slice(0, 5));
+        return { userId: crude[0], success: true, title, description };
+      }
 
-      // — 6) スコアリングで UID / メッセージを選ぶ
-      const candidates = Array.from(merged.values());
+      const candidates = [...merged.values()];
 
+      // ラベルスコア（UIDらしさ）
       const labelScore = (label?: string) => {
         if (!label) return 0;
         const l = label.toLowerCase();
         let s = 0;
-
-        // 完全一致を最優先（命名固定が可能なら強力）
-        if (/^line\s*user\s*id$/i.test(l)) s += 100;
-
-        if (/(^|\s)(uid)(\s|$)/i.test(label)) s += 5;
+        if (/^line\s*user\s*id$/i.test(l)) s += 100; // 完全一致を最優先
+        if (/(^|\s)uid(\s|$)/i.test(label)) s += 5;
         if (/user\s*id/i.test(label)) s += 5;
         if (/line\s*user\s*id/i.test(label)) s += 6;
-        if (/[ＩＩＤＵＩＤ]/.test(label)) s += 1; // 全角混じり耐性の微加点
-        if (/id/i.test(label)) s += 2;
         if (/ユーザ.?ー?id|利用者.?id|会員.?id|識別子/.test(label)) s += 4;
-        if (/(id|uid)/i.test(label)) s += 1; // 短文テキスト欄っぽい
-        return s;
-      };
-
-      const messageScore = (label?: string) => {
-        if (!label) return 0;
-        const l = label.toLowerCase();
-        let s = 0;
-        if (/message|memo|comment/i.test(l)) s += 5;
-        if (/メッセージ|備考|コメント|自由記述|ひとこと/.test(label)) s += 6;
-        if (/任意|optional/.test(label)) s += 1;
+        if (/id/i.test(label)) s += 2;
         return s;
       };
 
       // UID候補
-      candidates.sort((a, b) => (labelScore(b.label) - labelScore(a.label)));
-      let uidCandidate = candidates[0];
+      candidates.sort((a, b) => labelScore(b.label) - labelScore(a.label));
+      let uid = candidates[0];
 
-      // ラベルスコアが全滅 → TEXT/ID語含む or 最初の候補を採用（保険）
-      if (!uidCandidate || labelScore(uidCandidate.label) <= 0) {
+      // ラベル全滅 → テキスト系 or “IDっぽい” → それも無ければ先頭
+      if (!uid || labelScore(uid.label) <= 0) {
         const textish = candidates.filter(c =>
           /^(SHORT|TEXT|LONG)/i.test(c.kind || "") || /id/i.test(c.label || "")
         );
-        uidCandidate = textish[0] ?? candidates[0];
+        uid = textish[0] ?? candidates[0];
       }
 
-      // メッセージ候補
-      const msgSorted = [...candidates].sort((a, b) => (messageScore(b.label) - messageScore(a.label)));
-      const msgCandidate = msgSorted[0];
-      const messageId = messageScore(msgCandidate?.label) > 0 ? msgCandidate!.id : undefined;
+      // 最後の保険：何があっても userId は返す
+      const userId = uid?.id ?? allEntryIds[0];
 
-      return {
-        userId: uidCandidate?.id ?? candidates[0]?.id, // 最後の保険
-        message: messageId,
-        title,
-        description,
-        success: true,
-      };
+      // デバッグ（必要なら消してください）
+      console.debug("detect UID:", uid);
+      console.debug("total candidates:", candidates.length);
+
+      return { userId, title, description, success: true };
     } catch (err) {
+      console.error("detectEntryIds failed:", err);
       return { success: false, error: (err as Error).message };
     }
   }
