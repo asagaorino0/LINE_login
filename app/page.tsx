@@ -375,7 +375,7 @@ export default function Home() {
       try {
         const result = await GoogleFormsManager.detectEntryIds(normalized);
         if (result?.success) {
-          if (result.pageBackgroundColor) nextBgcolor = result.pageBackgroundColor
+          // if (result.pageBackgroundColor) nextBgcolor = result.pageBackgroundColor
           if (result.title) nextTitle = result.title;
           if (result.description) nextDesc = result.description;
           setDetectedEntries({ userId: result.userId, message: result.message });
@@ -460,7 +460,7 @@ export default function Home() {
         } catch { /* noop */ }
       }
 
-      userIdEntry = userIdEntry ?? 'entry.1795297917';
+      userIdEntry = userIdEntry ?? 'entry.##########';
       const prefillUrl = `${baseUrl}?usp=pp_url&${userIdEntry}=${encodeURIComponent(userId)}`;
       if (detectedEntries?.message) return `${prefillUrl}&${detectedEntries.message}=`;
       return prefillUrl;
