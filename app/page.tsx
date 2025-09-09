@@ -134,8 +134,11 @@ export default function Home() {
       .catch(() => setCookieInfo(null));
   }, [isLoggedIn, isAdmin]);
 
-  // 初回ロードで lid を解決
+  // 初回ロードで lid を解決（/open ページ以外の場合のみ）
   useEffect(() => {
+    // /open ページの場合はスキップ（OpenFormClient が処理するため）
+    if (window.location.pathname === '/open') return;
+
     const sp = new URLSearchParams(window.location.search);
     const lid = sp.get("lid");
     const formParam = sp.get("form");         // ←従来方式も残す

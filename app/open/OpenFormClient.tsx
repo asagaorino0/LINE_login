@@ -30,7 +30,17 @@ export default function OpenFormClient() {
         // lid からリンク情報を取得（aid/basicId, formUrl, title/desc）
         const r = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await r.json();
-        if (!r.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
+        if (!r.ok || !link?.ok) {
+          const errorCode = link?.code || "LINK_NOT_FOUND";
+          const errorMap: Record<string, string> = {
+            NO_LID: "リンクIDが指定されていません",
+            NOT_FOUND: "指定されたリンクが見つかりません",
+            LID_DISABLED: "このリンクは無効化されています",
+            LID_EXPIRED: "このリンクは期限切れです",
+            LINK_NOT_FOUND: "リンクが見つかりません"
+          };
+          throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
+        }
         // フォームURL正規化＆prefill生成（必要なら検出）
         const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
           ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
@@ -86,8 +96,23 @@ export default function OpenFormClient() {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center text-sm text-gray-600">
-      {err ? <>エラー: {err}</> : <>フォームへ遷移中…</>}
+    <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
+      {err ? (
+        <div className="text-center max-w-md">
+          <div className="text-red-600 mb-2">エラーが発生しました</div>
+          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">
+            {err}
+          </div>
+          <div className="mt-4 text-xs text-gray-400">
+            ページを再読み込みするか、管理者にお問い合わせください。
+          </div>
+        </div>
+      ) : (
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div>フォームへ遷移中…</div>
+        </div>
+      )}
     </div>
   );
 }
