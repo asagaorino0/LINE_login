@@ -22,6 +22,8 @@ export default function Home() {
     channelId?: string;
   };
 
+  // パス状態を管理
+  const [pathname, setPathname] = useState<string>('');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedBasicId, setSelectedBasicId] = useState<string>("");
 
@@ -60,6 +62,11 @@ export default function Home() {
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
+
+  // パス名をセット（/open の場合は何も表示しない）
+  useEffect(() => {
+    setPathname(window.location.pathname);
+  }, []);
   // 管理者ログイン後 or isAdmin 有効時に取得
   useEffect(() => {
     (async () => {
@@ -137,7 +144,7 @@ export default function Home() {
   // 初回ロードで lid を解決（/open ページ以外の場合のみ）
   useEffect(() => {
     // /open ページの場合はスキップ（OpenFormClient が処理するため）
-    if (window.location.pathname === '/open') return;
+    if (pathname === '/open') return;
 
     const sp = new URLSearchParams(window.location.search);
     const lid = sp.get("lid");
@@ -164,7 +171,7 @@ export default function Home() {
     }
     if (notifyParam === "0") setNotifyEnabled(false);
     if (notifyParam === "1") setNotifyEnabled(true);
-  }, []);
+  }, [pathname]);
 
 
   // ---- LIFF init ---------------------------------------------------------
@@ -553,6 +560,11 @@ export default function Home() {
 
 
   // ---- UI ---------------------------------------------------------------
+  // /open パスの場合は何も表示しない（OpenFormClient が完全に処理する）
+  if (pathname === '/open') {
+    return null;
+  }
+
   if (!isInitialized) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -686,7 +698,7 @@ export default function Home() {
                             disabled={isDetecting}
                             variant={formUrl ? 'default' : 'outline'}
                             size="sm"
-                            className="mt-2 w-full text-white border-blue-300 hover:bg-blue-50 mb-2"
+                            className="mt-2 w-full text-white border-blue-300 hover:bg-blue-500 mb-2"
                           >
                             {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
                           </Button>
@@ -725,7 +737,7 @@ export default function Home() {
                                 }}
                                 variant={signedLink ? 'default' : 'outline'}
                                 size="sm"
-                                className="mt-2 w-full text-white border-blue-300 hover:bg-blue-50 mb-2"
+                                className="mt-2 w-full text-white border-blue-300 hover:bg-blue-500 mb-2"
                               >
                                 <Copy className="w-3 h-3 mr-1" />
                                 リンクをコピー
