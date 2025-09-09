@@ -42,14 +42,26 @@ export default function OpenFormClient() {
           throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
         }
         // フォームURL正規化＆prefill生成（必要なら検出）
-        const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
-          ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
-          : link.formUrl;
+        // const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
+        //   ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
+        //   : link.formUrl;
+        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
         let userEntry = "entry.1587760013";
         try {
+          console.log("[open] Detecting entry IDs for:", viewUrl);
           const det = await GoogleFormsManager.detectEntryIds(viewUrl);
-          if (det?.success && det.userId) userEntry = det.userId;
-        } catch { /* noop */ }
+          console.log("[open] Detection result:", det);
+          //   if (det?.success && det.userId) userEntry = det.userId;
+          // } catch { /* noop */ }
+          if (det?.success && det.userId) {
+            userEntry = det.userId;
+            console.log("[open] Using detected entry ID:", userEntry);
+          } else {
+            console.warn("[open] Entry ID detection failed, using default:", userEntry);
+          }
+        } catch (e) {
+          console.warn("[open] Entry ID detection error:", e);
+        }
         const prefill =
           `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
