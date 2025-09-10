@@ -57,7 +57,7 @@ export default function Home() {
 
   // ★ 検出エラー表示 & 手入力オーバーライド（これを最優先）
   const [detectionError, setDetectionError] = useState<string | null>(null);
-  const [overrideUserEntry, setOverrideUserEntry] = useState<string>(""); // 例: "entry.1587760013"
+  const [overrideUserEntry, setOverrideUserEntry] = useState<string>(""); // 手入力entry ID
 
   const { toast, showToast, hideToast } = useToastNotification();
   const autoTriggeredRef = useRef(false);
@@ -261,18 +261,23 @@ export default function Home() {
       setDetectionError(null);
       try {
         const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
-        if (res?.success) {
+        if (res?.success && res.userId) {
           setDetectedEntries({ userId: res.userId });
-          setLastDetectionResult(res.userId ? { userId: res.userId, formUrl: viewUrlNormalized } : null);
+          setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
           if (res.title) setFormTitle(res.title);
           if (res.description) setFormDescription(res.description);
+          setDetectionError(null); // 成功時はエラーをクリア
         } else {
           setDetectedEntries(null);
-          setDetectionError(res?.error || '検出に失敗しました');
+          setDetectionError(res?.error || 'entry IDの自動検出に失敗しました。手動で入力してください。');
+          // フォームのタイトルと説明は検出失敗時でも設定
+          if (res?.title) setFormTitle(res.title);
+          if (res?.description) setFormDescription(res.description);
         }
       } catch (e: any) {
         setDetectedEntries(null);
-        setDetectionError(e?.message || '検出に失敗しました');
+        setDetectionError('entry IDの自動検出に失敗しました。手動で入力してください。');
+        console.warn('Detection error:', e);
       } finally {
         setIsDetecting(false);
       }
@@ -468,7 +473,9 @@ export default function Home() {
         } catch { /* noop */ }
       }
 
-      userIdEntry = userIdEntry ?? 'entry.##########';
+      if (!userIdEntry) {
+        throw new Error("このフォームでは自動UID連携に対応していません。手動でentry IDを指定してください。");
+      }
 
       const params = new URLSearchParams();
       params.set('usp', 'pp_url');
@@ -685,7 +692,7 @@ export default function Home() {
                                 <Input
                                   value={overrideUserEntry}
                                   onChange={(e) => setOverrideUserEntry(e.target.value)}
-                                  placeholder="例）entry.1587760013 または 1587760013"
+                                  placeholder="例）entry.123456789 または 123456789"
                                   className="text-xs"
                                 />
                               </div>

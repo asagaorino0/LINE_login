@@ -116,9 +116,9 @@ export async function GET(_req: Request, context: any) {
       return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
     }
 
-    const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt } = resource;
+    const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry } = resource;
     return NextResponse.json(
-      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt },
+      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry },
       { status: 200 }
     );
   } catch (e) {

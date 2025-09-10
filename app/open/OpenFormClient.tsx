@@ -41,26 +41,43 @@ export default function OpenFormClient() {
           };
           throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
         }
-        // フォームURL正規化＆prefill生成（必要なら検出）
-        const viewUrl = (GoogleFormsManager as any).normalizeFormUrl
-          ? (GoogleFormsManager as any).normalizeFormUrl(link.formUrl)
-          : link.formUrl;
-        // const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
-        let userEntry = "entry.1587760013";
-        try {
-          console.log("[open] Detecting entry IDs for:", viewUrl);
-          const det = await GoogleFormsManager.detectEntryIds(viewUrl);
-          console.log("[open] Detection result:", det);
-          //   if (det?.success && det.userId) userEntry = det.userId;
-          // } catch { /* noop */ }
-          if (det?.success && det.userId) {
-            userEntry = det.userId;
-            console.log("[open] Using detected entry ID:", userEntry);
-          } else {
-            console.warn("[open] Entry ID detection failed, using default:", userEntry);
+        // フォームURL正規化
+        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
+
+        // URLパラメータから手入力entry IDをチェック（最優先）
+        const entryFromUrl = qs.get("entry");
+
+        // 手入力entry ID > サーバー保存entry ID > 自動検出 の優先順序
+        let userEntry: string | null = null;
+
+        if (entryFromUrl) {
+          // URLパラメータの手入力entry IDを最優先
+          userEntry = entryFromUrl.startsWith('entry.') ? entryFromUrl : `entry.${entryFromUrl}`;
+          console.log("[open] 🎯 Using manual entry ID from URL:", userEntry);
+        } else if (link.entry) {
+          // サーバーに保存された手入力entry IDを使用
+          userEntry = link.entry.startsWith('entry.') ? link.entry : `entry.${link.entry}`;
+          console.log("[open] 🎯 Using manual entry ID from server:", userEntry);
+        } else {
+          // 手入力がない場合のみ自動検出を実行
+          try {
+            console.log("[open] 🔍 No manual entry ID found, detecting automatically for:", viewUrl);
+            const det = await GoogleFormsManager.detectEntryIds(viewUrl);
+            console.log("[open] Detection result:", det);
+            if (det?.success && det.userId) {
+              userEntry = det.userId;
+              console.log("[open] ✅ Using auto-detected entry ID:", userEntry);
+            } else {
+              throw new Error("Entry ID detection failed");
+            }
+          } catch (e) {
+            console.warn("[open] ❌ Entry ID detection error:", e);
+            throw new Error("このフォームでは自動UID連携に対応していません。手動でentry IDを指定してください。");
           }
-        } catch (e) {
-          console.warn("[open] Entry ID detection error:", e);
+        }
+
+        if (!userEntry) {
+          throw new Error("Entry IDが取得できませんでした。");
         }
         const prefill =
           `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;

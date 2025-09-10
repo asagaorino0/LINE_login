@@ -1,4 +1,3 @@
-// app/api/line/route.ts
 export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -169,7 +168,7 @@ function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMess
       body: {
         type: "box", layout: "vertical", spacing: "sm",
         contents: [
-          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" } // ← 6桁
+          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" }
         ]
       },
       footer: {
@@ -188,32 +187,25 @@ export async function POST(req: NextRequest) {
   try {
     const { userId, message, type, formUrl, title, desc, lid, adminId, basicId, aid, formId, exp, sig } =
       (await req.json()) as Body;
-    // console.log(
-    //   "lid********************************************************************", lid
-    // )
-    // // ログ（機微は伏せる）
-    // console.log("[/api/line] recv", {
-    //   type,
-    //   hasMsg: Boolean(message),
-    //   hasFormUrl: Boolean(formUrl),
-    //   userId: userId ? userId.slice(0, 6) + "…" : null,
-    //   via: lid ? "lid" : (aid && formId && exp && sig ? "signed" : (adminId ? "allowlist" : "cookie")),
-    //   basicId: basicId
-    // });
+
     // 入力チェック
     if (!userId) return fail(req, { success: false, code: "NO_USER_ID" }, 400);
     if (!UID_RE.test(userId)) return fail(req, { success: false, code: "BAD_UID" }, 400);
 
     // adminKey ＝ “aid” or “aid|@basicId”
     const adminKey = await resolveAdminKey(req, adminId, { aid, formId, exp, sig }, lid, basicId ?? null);
-    console.log("[/api/line] adminKey:", adminKey.includes("|")
-      ? adminKey.split("|")[0].slice(0, 6) + "…|…"
-      : adminKey.slice(0, 6) + "…", adminKey, basicId);
+
+    // 見やすいログ（第2引数が undefined にならないように 1 本化）
+    const adminKeyMask = adminKey.includes("|")
+      ? `${adminKey.split("|")[0].slice(0, 6)}…|…`
+      : `${adminKey.slice(0, 6)}…`;
+    console.log(`[api/line] adminKey=${adminKeyMask}`);
+
     // 認証情報読込
     const { channelAccessToken, channelSecret } = await loadSecretsByAdminKey(adminKey);
     const client = new Client({ channelAccessToken, channelSecret });
 
-    // push の前で
+    // push の前で UID 妥当性チェック（友だち/チャネル）
     try {
       await client.getProfile(userId);
     } catch (e: any) {
@@ -256,6 +248,7 @@ export async function POST(req: NextRequest) {
       LID_EXPIRED: "LID_EXPIRED",
       SIG_INVALID: "SIG_INVALID",
       BAD_BASIC_ID: "BAD_BASIC_ID",
+      AMBIGUOUS_ADMIN: "AMBIGUOUS_ADMIN",
     } as const;
     const code = map[error?.message as keyof typeof map] ?? "SEND_FAILED";
     console.error("❌ /api/line failed:", { code, status, detail: String(error?.message ?? error) });

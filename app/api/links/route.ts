@@ -32,11 +32,12 @@ type Body = {
   bgcolor?: string | null;
   basicId?: string | null;
   expiresAt?: number | 0;
+  entry?: string; // 手入力entry IDを追加
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, bgcolor, basicId, expiresAt } = (await req.json()) as Body;
+    const { form, title, desc, notify, bgcolor, basicId, expiresAt, entry } = (await req.json()) as Body;
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
       desc: desc ?? null,
       bgcolor: bgcolor ?? null,
       notify: notify ? 1 : 0,
+      entry: entry ?? null,          // 手入力entry IDを保存
       createdAt: now,
       expiresAt: Number(expiresAt || 0) || 0,
     });
