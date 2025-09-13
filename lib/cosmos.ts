@@ -1,5 +1,5 @@
 // lib/cosmos.ts
-import { CosmosClient } from "@azure/cosmos";
+import { CosmosClient, type Database, type Container } from "@azure/cosmos";
 
 const CS =
   process.env.AZURE_COSMOS_CONNECTION_STRING ??
@@ -29,7 +29,19 @@ const client = CS
 
 const db = client.database(DBID);
 
-// コンテナ取得
-export const getLineUsersContainer = () => db.container("lineUsers");
-export const getLineSecretsByIdContainer = () => db.container("lineSecretsById");
-export const getLinksByIdContainer = () => db.container("linksById");
+/** ★ 追加：既存の db を返すだけのヘルパ */
+export const getCosmosDatabase = (): Database => db;
+
+/** 共通のコンテナ取得ヘルパ（任意） */
+const getContainer = (name: string): Container =>
+  getCosmosDatabase().container(name);
+
+/** ここから用途別アクセサ */
+export function getLineUsersByIdContainer() {
+  // パーティションキー "/id" を想定
+  return getContainer(process.env.COSMOS_LINE_USERS_CONTAINER ?? "lineUsersById");
+}
+
+export const getLineUsersContainer = () => getContainer("lineUsers");
+export const getLineSecretsByIdContainer = () => getContainer("lineSecretsById");
+export const getLinksByIdContainer = () => getContainer("linksById");

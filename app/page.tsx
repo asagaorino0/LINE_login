@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent } from '../components/ui/card';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Copy } from 'lucide-react';
 import { ToastNotification, useToastNotification } from '../components/ui/toast-notification';
 
@@ -14,6 +18,15 @@ import { liffManager, LiffProfile } from '@/lib/liff';
 import HomeClient from './(public)/HomeClient';
 import LineSettingsClient from './line-settings/client';
 import Howto from './line-settings/howto';
+
+// LIFF ID validation schema - moved to top to avoid TDZ error
+const liffIdSchema = z.object({
+  liffId: z.string()
+    .min(1, "LIFF IDを入力してください")
+    .regex(/^\d{6,}-[A-Za-z0-9_-]+$/, "正しいLIFF IDフォーマットを入力してください")
+});
+
+type LiffIdFormData = z.infer<typeof liffIdSchema>;
 
 export default function Home() {
   type Account = {
@@ -50,7 +63,7 @@ export default function Home() {
   const [formDescription, setFormDescription] = useState('リンクを開くにはこちらをタップ');
   const [formBgcolor, setFormBgcolor] = useState('#555555');
   const [notifyEnabled, setNotifyEnabled] = useState(false);
-
+  const [lineUserId, setLineUserId] = useState<string>("");
   // 署名付きリンク（配布用）
   const [signedLink, setSignedLink] = useState<string>("");
   const [basicId, setBasicId] = useState<string>("");
@@ -60,13 +73,73 @@ export default function Home() {
   const [overrideUserEntry, setOverrideUserEntry] = useState<string>(""); // 手入力entry ID
 
   const { toast, showToast, hideToast } = useToastNotification();
+
+  const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
+
+  // LIFF ID form setup
+  const liffIdForm = useForm<LiffIdFormData>({
+    resolver: zodResolver(liffIdSchema),
+    defaultValues: {
+      liffId: ""
+    }
+  });
+
+  // LIFF settings query
+  const liffSettingsQuery = useQuery({
+    queryKey: ['/api/liff-settings'],
+    queryFn: async () => {
+      const response = await fetch('/api/liff-settings', {
+        credentials: 'include',
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json() as Promise<{ success: boolean; hasLiffId: boolean; liffId?: string; error?: string }>;
+    },
+    enabled: cookieInfo?.hasUid === true,
+    staleTime: 30000,
+    refetchOnWindowFocus: false
+  });
+
+  // LIFF settings save mutation
+  const saveLiffIdMutation = useMutation({
+    mutationFn: async (data: LiffIdFormData) => {
+      const response = await fetch('/api/liff-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return response.json() as Promise<{ success: boolean; message?: string; error?: string }>;
+    },
+    onSuccess: (result) => {
+      if (result.success) {
+        showToast('LIFF IDが保存されました', 'success');
+        queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
+      } else {
+        showToast(`保存エラー: ${result.error || '不明なエラー'}`, 'error');
+      }
+    },
+    onError: (error: any) => {
+      console.error('LIFF ID save error:', error);
+      showToast(`保存エラー: ${error?.message || '不明なエラー'}`, 'error');
+    }
+  });
   const autoTriggeredRef = useRef(false);
   const messageSentRef = useRef(false);
   const navigatedRef = useRef(false);
   const linkCtxRef = useRef<{ lid?: string; aid?: string } | null>(null);
-  const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
+
+
+  const queryClient = useQueryClient();
 
   // ---- pathname ----------------------------------------------------------
   useEffect(() => {
@@ -203,6 +276,7 @@ export default function Home() {
           setIsLoggedIn(true);
           await saveUserToBackend(profile);
         }
+        setLineUserId(profile!.userId); // 表示用に残すだけ（保存には使わない）
       }
     } catch (e) {
       console.error("再ログイン処理に失敗:", e);
@@ -319,6 +393,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
 
+  // ---- update LIFF ID form when query data changes ----------------------
+  useEffect(() => {
+    if (liffSettingsQuery.data?.success && liffSettingsQuery.data.liffId) {
+      liffIdForm.setValue('liffId', liffSettingsQuery.data.liffId);
+    }
+  }, [liffSettingsQuery.data, liffIdForm]);
+
+  // ---- LIFF ID form handlers ---------------------------------------------
+  const onLiffIdSubmit = (data: LiffIdFormData) => {
+    saveLiffIdMutation.mutate(data);
+  };
+
   // ---- helpers -----------------------------------------------------------
   const saveUserToBackend = async (profile: LiffProfile) => {
     try {
@@ -349,6 +435,7 @@ export default function Home() {
     },
     onSuccess: (profile) => {
       setUserProfile(profile);
+      setLineUserId(profile.userId)
       setIsLoggedIn(true);
       setError(null);
     },
@@ -848,7 +935,7 @@ export default function Home() {
                         <p className="text-sm text-gray-700 mb-2">
                           ⚠️LINEとの連携には、<strong style={{ color: 'red' }}>必ず次の設定をしてください</strong>
                         </p>
-                        <div className="bg-white rounded border p-2 mb-2">
+                        <div className="rounded border p-2 mb-2">
                           <p className="text-sm text-gray-600">
                             <strong>＜設定手順＞</strong><br />
                             1. 質問１のタイトル: 「LINE User ID」<br />
@@ -857,14 +944,99 @@ export default function Home() {
                           </p>
                         </div>
                       </div>
+                      {/* Debug: ユーザー情報表示 */}
+                      {`${lineUserId}`}
+                      {isLoggedIn && userProfile && (
+                        <div className="p-2 bg-gray-100 rounded text-xs text-gray-600 mb-2">
+                          ユーザーID: {userProfile.userId}
+                        </div>
+                      )}
+                      {/* LIFF ID 設定フォーム */}
+                      <div className="p-3 bg-blue-50 rounded-lg mb-4">
+                        <h5 className="text-sm font-semibold text-gray-800 mb-1">LIFF ID設定</h5>
+                        <p className="text-sm text-gray-700 mb-3">
+                          LINE連携に必要なLIFF IDを設定してください
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="M7eMe">
+                            <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                              LINE Developers Console
+                            </a>
+                          </span>
+                          にログイン
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="M7eMe">
+                            <span style={{
+                              backgroundColor: '#06c755',
+                              color: '#ffffff'
+                              // marginRight: "4em"
+                            }}>{`</>`}</span> <span >LINEログイン から取得</span>
+                          </span></p>
+                        <Form {...liffIdForm}>
+                          <form onSubmit={liffIdForm.handleSubmit(onLiffIdSubmit)} className="space-y-3">
+                            <FormField
+                              control={liffIdForm.control}
+                              name="liffId"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs font-medium text-gray-700">
+                                    LIFF ID
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      placeholder="例: 1234567890-abcdefgh"
+                                      className="text-sm"
+                                      data-testid="input-liff-id"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
+                            />
+
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs text-gray-600">
+                                {liffSettingsQuery.isLoading ? (
+                                  <span className="text-blue-600">読み込み中...</span>
+                                ) : liffSettingsQuery.data?.success && liffSettingsQuery.data.hasLiffId ? (
+                                  <span className="text-green-700 font-medium">設定済み</span>
+                                ) : (
+                                  <span className="text-orange-600">未設定</span>
+                                )}
+                              </div>
+
+                              <Button
+                                type="submit"
+                                size="sm"
+                                disabled={saveLiffIdMutation.isPending}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5"
+                                data-testid="button-save-liff-id"
+                              >
+                                {saveLiffIdMutation.isPending ? '保存中...' : '保存'}
+                              </Button>
+                            </div>
+                          </form>
+                        </Form>
+                      </div>
 
                       <Button
                         onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
-                        className="w-full text-green-700 border-blue-300 hover:bg-blue-700 mt-2 text-white"
+                        disabled={!liffSettingsQuery.data?.hasLiffId}
+                        className={`w-full mt-2 ${!liffSettingsQuery.data?.hasLiffId
+                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                          : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white'
+                          }`}
+                        data-testid="button-start-admin"
                       >
-                        準備完了！　はじめる
+                        {!liffSettingsQuery.data?.hasLiffId ? (
+                          <span>準備中... (LIFF IDを設定してください)</span>
+                        ) : (
+                          <span>準備完了！　はじめる</span>
+                        )}
                       </Button>
                     </>
                   )}
