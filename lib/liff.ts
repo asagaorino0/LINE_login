@@ -1,4 +1,5 @@
 // lib/liff.ts
+
 export interface LiffProfile {
   userId: string;
   displayName: string;
@@ -8,6 +9,8 @@ export interface LiffProfile {
 let liffLib: any | null = null;
 
 const isBrowser = () => typeof window !== "undefined";
+const LS_KEY = "app.liffId";
+const VALID = /^\d{6,}-[A-Za-z0-9_-]+$/;
 
 export class LiffManager {
   private static instance: LiffManager;
@@ -25,13 +28,29 @@ export class LiffManager {
   get liffId() {
     return this.currentLiffId;
   }
-  /** 明示的に liffId を保持させたい場合に使用（任意） */
+
+  /** 任意：手動で LIFF ID を保持させる */
   setLiffId(id: string | null) {
-    this.currentLiffId = id && id.trim() ? id.trim() : null;
+    const v = id && id.trim() ? id.trim() : null;
+    this.currentLiffId = v;
+    if (isBrowser()) {
+      try {
+        if (v) localStorage.setItem(LS_KEY, v);
+        else localStorage.removeItem(LS_KEY);
+      } catch { /* ignore */ }
+    }
   }
-  /** 利便性のためのゲッター関数 */
+
+  /** 便利ゲッター */
   getLiffId(): string | null {
-    return this.currentLiffId;
+    if (this.currentLiffId) return this.currentLiffId;
+    if (isBrowser()) {
+      try {
+        const v = localStorage.getItem(LS_KEY);
+        if (v && VALID.test(v)) return v;
+      } catch { /* ignore */ }
+    }
+    return null;
   }
 
   private async importSdk() {
@@ -41,13 +60,16 @@ export class LiffManager {
     }
   }
 
+  /** URL から ?liff= または ?liffId= を拾う */
   private liffIdFromUrl(): string | null {
     if (!isBrowser()) return null;
-    const s = new URLSearchParams(window.location.search).get("liffId");
-    if (s && /^\d{6,}-[A-Za-z0-9_-]+$/.test(s)) return s;
+    const sp = new URLSearchParams(window.location.search);
+    const s = sp.get("liff") || sp.get("liffId");
+    if (s && VALID.test(s)) return s;
     return null;
   }
 
+  /** サーバ保存の LIFF ID を取得（未認証なら 401→null） */
   private async liffIdFromServer(): Promise<string | null> {
     if (!isBrowser()) return null;
     try {
@@ -55,26 +77,39 @@ export class LiffManager {
         credentials: "include",
         cache: "no-store",
       });
-      if (!r.ok) return null; // 401含む
+      if (!r.ok) return null; // 401 を含め握りつぶす
       const j = await r.json();
-      return (j?.liffId && typeof j.liffId === "string") ? j.liffId : null;
+      const id = (j?.liffId && typeof j.liffId === "string") ? j.liffId : null;
+      return id && VALID.test(id) ? id : null;
     } catch {
       return null;
     }
   }
 
-  /** 優先度: 明示引数 > 既存保持値 > /api/liff-settings > URL(?liffId=) > env */
+  /**
+   * 優先度:
+   * 明示引数 > 既存保持値 > localStorage > URL(?liff|liffId) > env > /api/liff-settings
+   * 　※ 初回はサーバが 401 になりがちなので最後に問い合わせる
+   */
   async init(opts?: { liffId?: string }): Promise<boolean> {
     await this.importSdk();
 
-    const urlId = this.liffIdFromUrl();
-    const envId = process.env.NEXT_PUBLIC_LIFF_ID || "";
+    const fromArg = (opts?.liffId && VALID.test(opts.liffId)) ? opts.liffId.trim() : null;
+    const fromHeld = this.currentLiffId && VALID.test(this.currentLiffId) ? this.currentLiffId : null;
+    const fromLS = isBrowser() ? (() => {
+      try { const v = localStorage.getItem(LS_KEY); return v && VALID.test(v) ? v : null; } catch { return null; }
+    })() : null;
+    const fromUrl = this.liffIdFromUrl();
+    const fromEnv = (process.env.NEXT_PUBLIC_LIFF_ID && VALID.test(process.env.NEXT_PUBLIC_LIFF_ID))
+      ? process.env.NEXT_PUBLIC_LIFF_ID!
+      : "";
 
     const resolved =
-      (opts?.liffId && opts.liffId.trim()) ||
-      this.currentLiffId ||
-      urlId ||
-      envId ||
+      fromArg ||
+      fromHeld ||
+      fromLS ||
+      fromUrl ||
+      fromEnv ||
       (await this.liffIdFromServer());
 
     if (!resolved) {
@@ -83,10 +118,13 @@ export class LiffManager {
       return false;
     }
 
-    this.currentLiffId = resolved;
+    // すでに同じ ID で初期化済みならスキップ
+    if (this.isInitialized && this.currentLiffId === resolved) return true;
+
     try {
       await liffLib.init({ liffId: resolved });
       this.isInitialized = true;
+      this.setLiffId(resolved); // localStorage にも保存
       return true;
     } catch (e) {
       console.error("[LIFF] init failed:", e);
@@ -103,32 +141,48 @@ export class LiffManager {
     }
   }
 
-  /** LIFF公式の login({ redirectUri? }) を透過させる */
+  /**
+   * ログイン。redirectUri が未指定でも、現在の URL に liffId を付与して戻す。
+   * これにより、ログイン復帰後も init に必要な LIFFID が失われません。
+   */
   async login(opts?: { redirectUri?: string }): Promise<void> {
     if (!this.isInitialized) {
       throw new Error("Call init({ liffId }) before login().");
     }
-    // liff.login は非同期戻り値を返さないが await 可（即時解決）
-    await liffLib.login(opts);
+    const id = this.getLiffId();
+    // liff.login は戻り値は void だが await しても即 resolve
+    if (!liffLib.isLoggedIn()) {
+      const url = new URL((opts?.redirectUri || (isBrowser() ? window.location.href : "/")) as string, isBrowser() ? window.location.origin : undefined);
+      if (id) {
+        // 既存の liff/liffId を上書き保持
+        url.searchParams.set("liffId", id);
+      }
+      await liffLib.login({ redirectUri: url.toString() });
+    }
   }
 
   async logout(): Promise<void> {
     if (!liffLib) return;
-    try { liffLib.logout(); } catch { }
+    try { liffLib.logout(); } catch { /* ignore */ }
   }
 
   async getProfile(): Promise<LiffProfile | null> {
     if (!this.isInitialized) return null;
-    const p = await liffLib.getProfile();
-    if (!p) return null;
-    return {
-      userId: p.userId,
-      displayName: p.displayName,
-      pictureUrl: p.pictureUrl,
-    };
+    try {
+      const p = await liffLib.getProfile();
+      if (!p) return null;
+      return {
+        userId: p.userId,
+        displayName: p.displayName,
+        pictureUrl: p.pictureUrl,
+      };
+    } catch (e) {
+      console.warn("[LIFF] getProfile failed:", e);
+      return null;
+    }
   }
 
-  /** 便利メソッド：IDトークン（存在しない/未ログインなら null） */
+  /** IDトークン（未ログイン or 取得不可なら null） */
   async getIdToken(): Promise<string | null> {
     try {
       const tok = liffLib.getIDToken?.();
@@ -140,6 +194,7 @@ export class LiffManager {
 }
 
 export const liffManager = LiffManager.getInstance();
+
 
 
 // // lib/liff.ts

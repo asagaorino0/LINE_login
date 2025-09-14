@@ -157,6 +157,29 @@ export default function Home() {
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
 
+  useEffect(() => {
+    (async () => {
+      const sp = new URLSearchParams(location.search);
+      const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
+      const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+
+      await liffManager.init({ liffId: fromUrl || fromEnv }); // ★重要
+
+      setIsInitialized(true);
+
+      if (liffManager.isLoggedIn()) {
+        const profile = await liffManager.getProfile();
+        if (profile) {
+          setUserProfile(profile);
+          setIsLoggedIn(true);
+          await apiRequest('POST', '/api/line-users', {
+            lineUserId: profile.userId, displayName: profile.displayName, pictureUrl: profile.pictureUrl || null,
+          });
+        }
+      }
+    })();
+  }, []);
+
   // ---- pathname ----------------------------------------------------------
   useEffect(() => {
     setPathname(window.location.pathname);
@@ -278,15 +301,24 @@ export default function Home() {
   }, [pathname]);
 
   // ---- LIFF 起動の前提を満たすヘルパー ---------------------------------
-  const ensureLiffReady = async (): Promise<boolean> => {
-    const fromForm = liffIdForm.getValues()?.liffId?.trim();
-    const fromServer = liffSettingsQuery.data?.liffId?.trim();
-    const ok = await liffManager.init({ liffId: fromForm || fromServer || undefined });
-    if (!ok) {
-      setError("LIFF IDが未設定です。先に「LIFF ID設定」で保存してください。");
-    }
-    return ok;
+  // const ensureLiffReady = async (): Promise<boolean> => {
+  //   const fromForm = liffIdForm.getValues()?.liffId?.trim();
+  //   const fromServer = liffSettingsQuery.data?.liffId?.trim();
+  //   const ok = await liffManager.init({ liffId: fromForm || fromServer || undefined });
+  //   if (!ok) {
+  //     setError("LIFF IDが未設定です。先に「LIFF ID設定」で保存してください。");
+  //   }
+  //   return ok;
+  // };
+  const ensureLiffReady = async () => {
+    const sp = new URLSearchParams(location.search);
+    const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
+    const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
+    const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+    return await liffManager.init({ liffId: fromForm || fromUrl || fromEnv });
   };
+
+
 
   // ---- 手動再ログイン（必ず init → logout → login）---------------------
   const relogin = async () => {
@@ -450,11 +482,10 @@ export default function Home() {
     }
   };
 
-  const handleLineLogin = () => {
-    if (!loginMutation.isPending) {
-      setError(null);
-      loginMutation.mutate();
-    }
+  const handleLineLogin = async () => {
+    const ok = await ensureLiffReady();
+    if (!ok) { setError("LIFF ID を URL/フォーム/ENV のいずれかで指定してください。"); return; }
+    await liffManager.login({ redirectUri: location.href }); // ← ここで liffId を付与して戻る（上の login が付け直す）
   };
 
   const loginMutation = useMutation<LiffProfile, Error>({
@@ -724,26 +755,26 @@ export default function Home() {
 
         <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
           {/* 未ログイン & 自動モード */}
-          {!isLoggedIn && isAutoMode && (
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
-                  <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                    LINEアカウントでログインして、ユーザーIDを安全に取得します
-                  </p>
-                  <Button
-                    onClick={handleLineLogin}
-                    disabled={loginMutation.isPending}
-                    className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
-                    data-testid="button-line-login"
-                  >
-                    {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          {/* {!isLoggedIn && isAutoMode && ( */}
+          {/* <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="text-center">
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
+                <p className="text-gray-600 mb-6 text-sm leading-relaxed">
+                  LINEアカウントでログインして、ユーザーIDを安全に取得します
+                </p> */}
+          <Button
+            onClick={handleLineLogin}
+            disabled={loginMutation.isPending}
+            className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
+            data-testid="button-line-login"
+          >
+            {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
+          </Button>
+          {/* </div>
+            </CardContent>
+          </Card> */}
+          {/* )} */}
 
           {/* 自動モード：ログイン済み → フォームアクセス */}
           {isLoggedIn && userProfile && formUrl && isAutoMode && (
