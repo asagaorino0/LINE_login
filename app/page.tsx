@@ -84,25 +84,41 @@ export default function Home() {
     }
   });
 
-  // LIFF settings query
-  const liffSettingsQuery = useQuery({
+  const queryClient = useQueryClient();
+
+  // ① 型を用意
+  type LiffSettingsResp = {
+    success: boolean;
+    hasLiffId: boolean;
+    liffId?: string;
+    error?: string;
+  };
+
+  // ② useQuery にジェネリクスを付け、常に LiffSettingsResp を返す
+  const liffSettingsQuery = useQuery<LiffSettingsResp>({
     queryKey: ['/api/liff-settings'],
     queryFn: async () => {
       const response = await fetch('/api/liff-settings', {
         credentials: 'include',
         cache: 'no-store'
       });
+      if (response.status === 401) {
+        // 401でも同じ型で返す（liffId は undefined）
+        return { success: false, hasLiffId: false } as LiffSettingsResp;
+      }
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      return response.json() as Promise<{ success: boolean; hasLiffId: boolean; liffId?: string; error?: string }>;
+      // ここも LiffSettingsResp として返す
+      return (await response.json()) as LiffSettingsResp;
     },
     enabled: cookieInfo?.hasUid === true,
     staleTime: 30000,
     refetchOnWindowFocus: false
   });
 
-  // LIFF settings save mutation
+
+  // ---- LIFF settings save mutation（保存直後に init） ----
   const saveLiffIdMutation = useMutation({
     mutationFn: async (data: LiffIdFormData) => {
       const response = await fetch('/api/liff-settings', {
@@ -118,9 +134,11 @@ export default function Home() {
       }
       return response.json() as Promise<{ success: boolean; message?: string; error?: string }>;
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.success) {
         showToast('LIFF IDが保存されました', 'success');
+        // ★ 保存直後にその LIFF ID で初期化
+        await liffManager.init({ liffId: liffIdForm.getValues().liffId });
         queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
       } else {
         showToast(`保存エラー: ${result.error || '不明なエラー'}`, 'error');
@@ -131,15 +149,13 @@ export default function Home() {
       showToast(`保存エラー: ${error?.message || '不明なエラー'}`, 'error');
     }
   });
+
   const autoTriggeredRef = useRef(false);
   const messageSentRef = useRef(false);
   const navigatedRef = useRef(false);
   const linkCtxRef = useRef<{ lid?: string; aid?: string } | null>(null);
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
-
-
-  const queryClient = useQueryClient();
 
   // ---- pathname ----------------------------------------------------------
   useEffect(() => {
@@ -261,12 +277,25 @@ export default function Home() {
     if (notifyParam === "1") setNotifyEnabled(true);
   }, [pathname]);
 
-  // ---- LIFF init ---------------------------------------------------------
+  // ---- LIFF 起動の前提を満たすヘルパー ---------------------------------
+  const ensureLiffReady = async (): Promise<boolean> => {
+    const fromForm = liffIdForm.getValues()?.liffId?.trim();
+    const fromServer = liffSettingsQuery.data?.liffId?.trim();
+    const ok = await liffManager.init({ liffId: fromForm || fromServer || undefined });
+    if (!ok) {
+      setError("LIFF IDが未設定です。先に「LIFF ID設定」で保存してください。");
+    }
+    return ok;
+  };
+
+  // ---- 手動再ログイン（必ず init → logout → login）---------------------
   const relogin = async () => {
     try {
-      await liffManager.init();
+      const ready = await ensureLiffReady();
+      if (!ready) return;
+
       if (liffManager.isLoggedIn()) {
-        liffManager.logout();
+        await liffManager.logout();
       }
       await liffManager.login();
       if (liffManager.isLoggedIn()) {
@@ -276,7 +305,7 @@ export default function Home() {
           setIsLoggedIn(true);
           await saveUserToBackend(profile);
         }
-        setLineUserId(profile!.userId); // 表示用に残すだけ（保存には使わない）
+        setLineUserId(profile!.userId); // 表示用
       }
     } catch (e) {
       console.error("再ログイン処理に失敗:", e);
@@ -284,11 +313,13 @@ export default function Home() {
     }
   };
 
+  // ---- 初期起動（LIFF解決付き） ----------------------------------------
   useEffect(() => {
     (async () => {
       try {
-        await liffManager.init();
+        await ensureLiffReady(); // 成否に関わらず UI は出す
         setIsInitialized(true);
+
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
@@ -302,7 +333,9 @@ export default function Home() {
         setError('LIFF初期化に失敗しました。ページをリロードしてください。');
       }
     })();
-  }, []);
+    // サーバーに保存された LIFF ID が届いたら再初期化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liffSettingsQuery.data?.liffId]);
 
   // ---- document title ----------------------------------------------------
   useEffect(() => {
@@ -340,11 +373,10 @@ export default function Home() {
           setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
           if (res.title) setFormTitle(res.title);
           if (res.description) setFormDescription(res.description);
-          setDetectionError(null); // 成功時はエラーをクリア
+          setDetectionError(null); // 成功時はクリア
         } else {
           setDetectedEntries(null);
           setDetectionError(res?.error || 'entry IDの自動検出に失敗しました。手動で入力してください。');
-          // フォームのタイトルと説明は検出失敗時でも設定
           if (res?.title) setFormTitle(res.title);
           if (res?.description) setFormDescription(res.description);
         }
@@ -427,6 +459,8 @@ export default function Home() {
 
   const loginMutation = useMutation<LiffProfile, Error>({
     mutationFn: async () => {
+      const ready = await ensureLiffReady(); // ★ 追加
+      if (!ready) throw new Error('LIFF not ready');
       await liffManager.login();
       const profile = await liffManager.getProfile();
       if (!profile) throw new Error('Profile not available');
@@ -946,11 +980,9 @@ export default function Home() {
                       </div>
                       {/* Debug: ユーザー情報表示 */}
                       {`${lineUserId}`}
-                      {/* {lineUserId ? `${lineUserId}` : */}
                       <Button onClick={relogin} disabled={false} className="w-full bg-[#00be00]">
                         ログイン
                       </Button>
-                      {/* } */}
                       {isLoggedIn && userProfile && (
                         <div className="p-2 bg-gray-100 rounded text-xs text-gray-600 mb-2">
                           ユーザーID: {userProfile.userId}
@@ -975,7 +1007,6 @@ export default function Home() {
                             <span style={{
                               backgroundColor: '#06c755',
                               color: '#ffffff'
-                              // marginRight: "4em"
                             }}>{`</>`}</span> <span >LINEログイン から取得</span>
                           </span></p>
                         <Form {...liffIdForm}>

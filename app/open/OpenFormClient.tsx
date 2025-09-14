@@ -52,22 +52,25 @@ export default function OpenFormClient() {
         }
 
         // --- ここが重要：リンクの liffId で init → login 判定 ---
-        const ok = await liffManager.init({ liffIdOverride: liffIdToUse });
-        console.log("[open] init() ok =", ok, "resolved =", liffManager.getLiffId?.());
+        //        const ok = await liffManager.init({ liffIdOverride: liffIdToUse });
+        const ok = await liffManager.init({ liffId: liffIdToUse }); // ← 修正: liffIdOverride ではない
+        console.log("[open] init() ok =", ok, "resolved =", liffManager.getLiffId());
         if (!ok) {
           throw new Error("LIFF初期化に失敗しました。liffId が不正か、LIFFアプリが無効/削除されています。");
         }
 
         if (!liffManager.isLoggedIn()) {
           // 戻り先は現在URL
-          liffManager.login(location.href);
+          //    liffManager.login(location.href);
+          await liffManager.login({ redirectUri: location.href }); // ← 修正: 引数オブジェクト
           return; // いったん終了（復帰後に再実行される）
         }
 
         // ログイン後に IDトークンを取得して API へ（401対策）
-        const idToken = await liffManager.getIdToken(); // liff.getIDToken()
+        const idToken = await liffManager.getIdToken(); // ← 追加メソッド
         if (!idToken) throw new Error("LINE IDトークン取得失敗");
 
+        // ※ サーバ側が Authorization を見ていない場合は不要。あなたの実装に合わせて。
         const res = await fetch("/api/liff-settings", {
           headers: { Authorization: `Bearer ${idToken}` },
           credentials: "include",
@@ -183,4 +186,3 @@ export default function OpenFormClient() {
     </div>
   );
 }
-
