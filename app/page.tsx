@@ -245,24 +245,6 @@ export default function Home() {
     mutationFn: async (vars) => {
       await apiRequest("POST", "/api/line-admin", vars);
     },
-    onSuccess: async () => {
-      // 管理者Cookie設定成功後、whoamiを再フェッチしてLIFF設定クエリを有効化
-      try {
-        const whoamiResponse = await fetch('/api/whoami', {
-          credentials: 'include',
-          cache: 'no-store'
-        });
-        const cookieData = await whoamiResponse.json();
-        setCookieInfo(cookieData);
-
-        // LIFF設定クエリを再実行
-        queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
-
-        console.log("🔄 Admin cookie set, whoami refetched, LIFF settings query invalidated");
-      } catch (error) {
-        console.error("Failed to refresh whoami after admin cookie set:", error);
-      }
-    },
   });
 
   useEffect(() => {
@@ -1078,15 +1060,15 @@ export default function Home() {
                         onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
-                        disabled={!liffSettingsQuery.data?.hasLiffId}
-                        className={`w-full mt-2 ${!liffSettingsQuery.data?.hasLiffId
+                        disabled={!isLoggedIn}
+                        className={`w-full mt-2 ${!isLoggedIn
                           ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                           : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white'
                           }`}
                         data-testid="button-start-admin"
                       >
-                        {!liffSettingsQuery.data?.hasLiffId ? (
-                          <span>準備中... (LIFF IDを設定してください)</span>
+                        {!isLoggedIn ? (
+                          <span>準備中... (LINEログインしてください)</span>
                         ) : (
                           <span>準備完了！　はじめる</span>
                         )}
