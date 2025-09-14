@@ -35,7 +35,7 @@ export default function OpenFormClient() {
 
         // 2) リンクから LIFF ID を取得（クエリ指定で上書き可）
         let liffIdToUse: string | undefined = linkData.liffId || undefined;
-        const fromQuery = qs.get("liff") || qs.get("liffId"); // 例: &liff=2008088055-gKXl6W1p
+        const fromQuery = qs.get("liff") || qs.get("liffId"); // 例: &liff=1234567890-AbCdEfGh
         if (fromQuery) liffIdToUse = fromQuery || undefined;
 
         console.log(
@@ -48,7 +48,7 @@ export default function OpenFormClient() {
         );
 
         if (!liffIdToUse) {
-          throw new Error("LIFF ID が未設定です。リンク設定またはURLクエリ（&liff=...）を確認してください。");
+          throw new Error("LIFF ID が未設定です。リンク設定またはURLクエリ（&liffId=...）を確認してください。管理者は /admin/migrate でデータ移行してください。");
         }
 
         // --- ここが重要：リンクの liffId で init → login 判定 ---

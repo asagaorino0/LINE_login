@@ -565,6 +565,23 @@ export default function Home() {
         payload.entry = ensureEntryFormat(overrideUserEntry);
       }
 
+      // 現在のLIFF IDを取得してpayloadに追加
+      let currentLiffId: string | null = null;
+      try {
+        const liffResponse = await fetch('/api/liff-settings', {
+          credentials: 'include'
+        });
+        if (liffResponse.ok) {
+          const liffData = await liffResponse.json();
+          if (liffData.success && liffData.liffId) {
+            currentLiffId = liffData.liffId;
+            payload.liffId = currentLiffId;
+          }
+        }
+      } catch (e) {
+        console.warn('LIFF IDの取得に失敗しました:', e);
+      }
+
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -585,14 +602,29 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
+      // // ★ 生成リンクに entry= を付与して返す（ここが肝）
+      // const baseLink: string = j.link;
+      // const withEntry = overrideUserEntry.trim()
+      //   ? `${baseLink}${baseLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`
+      //   : baseLink;
 
-      // ★ 生成リンクに entry= を付与して返す（ここが肝）
+      // setSignedLink(withEntry);
+      // ★ 生成リンクに entry= と liffId= を付与して返す（ここが肝）
       const baseLink: string = j.link;
-      const withEntry = overrideUserEntry.trim()
-        ? `${baseLink}${baseLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`
-        : baseLink;
+      let enhancedLink = baseLink;
 
-      setSignedLink(withEntry);
+      // entry IDを追加
+      if (overrideUserEntry.trim()) {
+        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`;
+      }
+
+      // LIFF IDを追加
+      if (currentLiffId) {
+        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}liff=${encodeURIComponent(currentLiffId)}`;
+        console.log(`[Generate] LIFF ID追加: ${currentLiffId}`);
+      }
+
+      setSignedLink(enhancedLink);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
