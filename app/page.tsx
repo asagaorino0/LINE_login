@@ -1093,18 +1093,35 @@ export default function Home() {
                         onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
-                        disabled={!isLoggedIn}
-                        className={`w-full mt-2 ${!isLoggedIn
-                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                          : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white'
-                          }`}
+                        disabled={(() => {
+                          const sp = new URLSearchParams(window.location.search);
+                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                          const liffIdFromForm = liffIdForm.watch('liffId');
+                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                          return !isLoggedIn || !hasLiffId;
+                        })()}
+                        className={`w-full mt-2 ${(() => {
+                          const sp = new URLSearchParams(window.location.search);
+                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                          const liffIdFromForm = liffIdForm.watch('liffId');
+                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                          return (!isLoggedIn || !hasLiffId)
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                            : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
+                        })()}`}
                         data-testid="button-start-admin"
                       >
-                        {!isLoggedIn ? (
-                          <span>準備中... (LINEログインしてください)</span>
-                        ) : (
-                          <span>準備完了！　はじめる</span>
-                        )}
+                        {(() => {
+                          const sp = new URLSearchParams(window.location.search);
+                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                          const liffIdFromForm = liffIdForm.watch('liffId');
+                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                          return (!isLoggedIn || !hasLiffId) ? (
+                            <span>準備中... (LINEログインしてください)</span>
+                          ) : (
+                            <span>準備完了！　はじめる</span>
+                          );
+                        })()}
                       </Button>
                     </>
                   )}
