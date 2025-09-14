@@ -1,4 +1,3 @@
-// app/open/OpenFormClient.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -13,55 +12,70 @@ export default function OpenFormClient() {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
-        const lid = qs.get("lid");                      // ★ これが命
+        const lid = qs.get("lid"); // ★ 必須：リンクID
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         console.log("[open] lid =", lid);
 
-        // 必ず /open 画面上で LIFF 初期化
-        await liffManager.init();
-        if (!liffManager.isLoggedIn()) {
-          await liffManager.login();
-          return;
-        }
-        const profile = await liffManager.getProfile();
-        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
-
-        // lid からリンク情報を取得（aid/basicId, formUrl, title/desc）
-        const r = await fetch(`/api/links/${lid}`, { credentials: "include" });
-        const link = await r.json();
-        if (!r.ok || !link?.ok) {
-          const errorCode = link?.code || "LINK_NOT_FOUND";
+        // 1) lid からリンク情報を取得（formUrl, liffId など）
+        const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
+        const linkData = await linkResp.json();
+        if (!linkResp.ok || !linkData?.ok) {
+          const errorCode = linkData?.code || "LINK_NOT_FOUND";
           const errorMap: Record<string, string> = {
             NO_LID: "リンクIDが指定されていません",
             NOT_FOUND: "指定されたリンクが見つかりません",
             LID_DISABLED: "このリンクは無効化されています",
             LID_EXPIRED: "このリンクは期限切れです",
-            LINK_NOT_FOUND: "リンクが見つかりません"
+            LINK_NOT_FOUND: "リンクが見つかりません",
+            LID_NOT_FOUND: "リンクが見つかりません",
           };
           throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
         }
-        // フォームURL正規化
+
+        // 2) リンクから LIFF ID を取得して初期化
+        let liffIdToUse: string | undefined = linkData.liffId || undefined;
+
+        // ▼ URLクエリによる上書き（暫定テストに便利。例: &liff=2008088055-gKXl6W1p）
+        const fromQuery = qs.get("liff") || qs.get("liffId");
+        if (fromQuery) liffIdToUse = fromQuery;
+
+        console.log("[open] liffId (link) =", linkData.liffId, " / (query) =", fromQuery, " / (use) =", liffIdToUse);
+
+        // --- LIFF 初期化 ---
+        const ok = await liffManager.init({ liffIdOverride: liffIdToUse });
+        console.log("[open] init() ok =", ok, "resolved =", liffManager.getLiffId?.());
+        if (!ok) {
+          throw new Error("LIFF初期化に失敗しました。liffId が不正か、LIFFアプリが無効/削除されています。");
+        }
+
+        if (!liffManager.isLoggedIn()) {
+          // 戻り先は現在URL
+          liffManager.login(location.href);
+          return; // いったん終了（復帰後に再実行される）
+        }
+
+        const profile = await liffManager.getProfile();
+        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
+        console.log("[open] profile OK:", profile.userId);
+
+        // 3) フォームURL正規化
+        const link = linkData;
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
 
-        // URLパラメータから手入力entry IDをチェック（最優先）
+        // 4) UID を入れる entry の決定（URL>サーバー保存>自動検出）
         const entryFromUrl = qs.get("entry");
-
-        // 手入力entry ID > サーバー保存entry ID > 自動検出 の優先順序
         let userEntry: string | null = null;
 
         if (entryFromUrl) {
-          // URLパラメータの手入力entry IDを最優先
-          userEntry = entryFromUrl.startsWith('entry.') ? entryFromUrl : `entry.${entryFromUrl}`;
+          userEntry = entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`;
           console.log("[open] 🎯 Using manual entry ID from URL:", userEntry);
         } else if (link.entry) {
-          // サーバーに保存された手入力entry IDを使用
-          userEntry = link.entry.startsWith('entry.') ? link.entry : `entry.${link.entry}`;
+          userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
           console.log("[open] 🎯 Using manual entry ID from server:", userEntry);
         } else {
-          // 手入力がない場合のみ自動検出を実行
           try {
-            console.log("[open] 🔍 No manual entry ID found, detecting automatically for:", viewUrl);
+            console.log("[open] 🔍 Detecting entry ID for:", viewUrl);
             const det = await GoogleFormsManager.detectEntryIds(viewUrl);
             console.log("[open] Detection result:", det);
             if (det?.success && det.userId) {
@@ -76,13 +90,14 @@ export default function OpenFormClient() {
           }
         }
 
-        if (!userEntry) {
-          throw new Error("Entry IDが取得できませんでした。");
-        }
+        if (!userEntry) throw new Error("Entry IDが取得できませんでした。");
+
+        // 5) prefill URL を生成（?usp=pp_url&entry.xxx=<userId>）
         const prefill =
           `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
+        console.log("[open] prefill =", prefill);
 
-        // ── ここが肝：payload は lid だけ ─────────────────────────
+        // 6) LINE 送信用の通知（必要に応じてカード送信など）
         if (!sentRef.current) {
           sentRef.current = true;
           const payload = {
@@ -115,7 +130,7 @@ export default function OpenFormClient() {
           }
         }
 
-        // 少し待ってからフォームへ遷移
+        // 7) 少し待ってからフォームへ遷移
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);

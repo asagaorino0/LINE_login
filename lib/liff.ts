@@ -68,11 +68,11 @@ export class LiffManager {
         console.warn("[LIFF] fetch /api/liff-settings failed:", e);
       }
     }
-    // 2) URL ?lid=... を優先（初回ブート）
+    // 2) URL ?liffId=... を優先（初回ブート）
     if (!liffId) {
       try {
         const url = new URL(window.location.href);
-        const fromQuery = url.searchParams.get("lid");
+        const fromQuery = url.searchParams.get("liffId");
         if (fromQuery) {
           liffId = fromQuery;
           localStorage.setItem(LIFF_ID_KEY, fromQuery);
