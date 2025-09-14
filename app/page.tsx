@@ -245,6 +245,24 @@ export default function Home() {
     mutationFn: async (vars) => {
       await apiRequest("POST", "/api/line-admin", vars);
     },
+    onSuccess: async () => {
+      // 管理者Cookie設定成功後、whoamiを再フェッチしてLIFF設定クエリを有効化
+      try {
+        const whoamiResponse = await fetch('/api/whoami', {
+          credentials: 'include',
+          cache: 'no-store'
+        });
+        const cookieData = await whoamiResponse.json();
+        setCookieInfo(cookieData);
+
+        // LIFF設定クエリを再実行
+        queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
+
+        console.log("🔄 Admin cookie set, whoami refetched, LIFF settings query invalidated");
+      } catch (error) {
+        console.error("Failed to refresh whoami after admin cookie set:", error);
+      }
+    },
   });
 
   useEffect(() => {
