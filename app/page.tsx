@@ -19,28 +19,55 @@ import HomeClient from './(public)/HomeClient';
 import LineSettingsClient from './line-settings/client';
 import Howto from './line-settings/howto';
 
-// LIFF ID validation schema - moved to top to avoid TDZ error
+/* ------------------------------ Types & Const ------------------------------ */
+
+type Account = {
+  basicId: string;
+  channelName?: string;
+  channelId?: string;
+};
+
+type LiffSettingsResp = {
+  success: boolean;
+  hasLiffId: boolean;
+  liffId?: string;
+  error?: string;
+};
+
+const LIFF_ID_RE = /^\d{6,}-[A-Za-z0-9_-]+$/;
+
+/* ------------------------------ Zod Schemas -------------------------------- */
+
 const liffIdSchema = z.object({
   liffId: z.string()
-    .min(1, "LIFF IDを入力してください")
-    .regex(/^\d{6,}-[A-Za-z0-9_-]+$/, "正しいLIFF IDフォーマットを入力してください")
+    .min(1, 'LIFF IDを入力してください')
+    .regex(LIFF_ID_RE, '正しいLIFF IDフォーマットを入力してください'),
 });
 
 type LiffIdFormData = z.infer<typeof liffIdSchema>;
 
-export default function Home() {
-  type Account = {
-    basicId: string;
-    channelName?: string;
-    channelId?: string;
-  };
+/* ------------------------------ Utilities ---------------------------------- */
 
-  // ---- routing / accounts ------------------------------------------------
+function ensureEntryFormat(s: string): string {
+  const t = (s || '').trim();
+  if (!t) return t;
+  if (/^\d+$/.test(t)) return `entry.${t}`;
+  if (!/^entry\./i.test(t)) {
+    const num = t.match(/(\d{5,})/);
+    if (num) return `entry.${num[1]}`;
+  }
+  return t;
+}
+
+/* --------------------------------- Page ------------------------------------ */
+
+export default function Home() {
+  /* ---- routing / accounts ---- */
   const [pathname, setPathname] = useState<string>('');
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [selectedBasicId, setSelectedBasicId] = useState<string>("");
+  const [selectedBasicId, setSelectedBasicId] = useState<string>('');
 
-  // ---- app state ---------------------------------------------------------
+  /* ---- app state ---- */
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
@@ -54,7 +81,6 @@ export default function Home() {
   const [isGeneratingUrl, setIsGeneratingUrl] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
 
-  // 検出結果（ラベルは使わない。メッセージ欄も廃止）
   const [detectedEntries, setDetectedEntries] = useState<{ userId?: string } | null>(null);
   const [lastDetectionResult, setLastDetectionResult] = useState<{ userId: string; formUrl: string } | null>(null);
 
@@ -64,13 +90,11 @@ export default function Home() {
   const [formBgcolor, setFormBgcolor] = useState('#555555');
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [lineUserId, setLineUserId] = useState<string>("");
-  // 署名付きリンク（配布用）
   const [signedLink, setSignedLink] = useState<string>("");
   const [basicId, setBasicId] = useState<string>("");
 
-  // ★ 検出エラー表示 & 手入力オーバーライド（これを最優先）
   const [detectionError, setDetectionError] = useState<string | null>(null);
-  const [overrideUserEntry, setOverrideUserEntry] = useState<string>(""); // 手入力entry ID
+  const [overrideUserEntry, setOverrideUserEntry] = useState<string>("");
 
   const { toast, showToast, hideToast } = useToastNotification();
 
@@ -86,15 +110,8 @@ export default function Home() {
 
   const queryClient = useQueryClient();
 
-  // ① 型を用意
-  type LiffSettingsResp = {
-    success: boolean;
-    hasLiffId: boolean;
-    liffId?: string;
-    error?: string;
-  };
+  /* ---- queries ---- */
 
-  // ② useQuery にジェネリクスを付け、常に LiffSettingsResp を返す
   const liffSettingsQuery = useQuery<LiffSettingsResp>({
     queryKey: ['/api/liff-settings'],
     queryFn: async () => {
@@ -103,13 +120,11 @@ export default function Home() {
         cache: 'no-store'
       });
       if (response.status === 401) {
-        // 401でも同じ型で返す（liffId は undefined）
         return { success: false, hasLiffId: false } as LiffSettingsResp;
       }
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      // ここも LiffSettingsResp として返す
+      if (!response.ok)
+        throw new Error(`HTTP error! status: ${response.status}`
+        )
       return (await response.json()) as LiffSettingsResp;
     },
     enabled: cookieInfo?.hasUid === true,
@@ -117,27 +132,23 @@ export default function Home() {
     refetchOnWindowFocus: false
   });
 
-
-  // ---- LIFF settings save mutation（保存直後に init） ----
   const saveLiffIdMutation = useMutation({
     mutationFn: async (data: LiffIdFormData) => {
       const response = await fetch('/api/liff-settings', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
       });
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
-      }
       return response.json() as Promise<{ success: boolean; message?: string; error?: string }>;
     },
     onSuccess: async (result) => {
       if (result.success) {
         showToast('LIFF IDが保存されました', 'success');
-        // ★ 保存直後にその LIFF ID で初期化
         await liffManager.init({ liffId: liffIdForm.getValues().liffId });
         queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
       } else {
@@ -150,6 +161,8 @@ export default function Home() {
     }
   });
 
+  /* ---- refs ---- */
+
   const autoTriggeredRef = useRef(false);
   const messageSentRef = useRef(false);
   const navigatedRef = useRef(false);
@@ -157,35 +170,59 @@ export default function Home() {
 
   const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const sp = new URLSearchParams(location.search);
-      const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
-      const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+  /* ------------------------------ Effects ---------------------------------- */
 
-      await liffManager.init({ liffId: fromUrl || fromEnv }); // ★重要
-
-      setIsInitialized(true);
-
-      if (liffManager.isLoggedIn()) {
-        const profile = await liffManager.getProfile();
-        if (profile) {
-          setUserProfile(profile);
-          setIsLoggedIn(true);
-          await apiRequest('POST', '/api/line-users', {
-            lineUserId: profile.userId, displayName: profile.displayName, pictureUrl: profile.pictureUrl || null,
-          });
-        }
-      }
-    })();
-  }, []);
-
-  // ---- pathname ----------------------------------------------------------
   useEffect(() => {
     setPathname(window.location.pathname);
   }, []);
 
-  // ---- secrets (for admin accounts list) --------------------------------
+  // LIFF 初期化（URL / フォーム / サーバ設定 / ENV の優先順で）
+  const ensureLiffReady = async (): Promise<boolean> => {
+    const sp = new URLSearchParams(location.search);
+    const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
+    const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
+    const fromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
+    const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+    return await liffManager.init({ liffId: fromForm || fromUrl || fromServer || fromEnv });
+  };
+
+  // 初回起動
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureLiffReady();
+        setIsInitialized(true);
+
+        if (liffManager.isLoggedIn()) {
+          const profile = await liffManager.getProfile();
+          if (profile) {
+            setUserProfile(profile);
+            setIsLoggedIn(true);
+            await apiRequest('POST', '/api/line-users', {
+              lineUserId: profile.userId,
+              displayName: profile.displayName,
+              pictureUrl: profile.pictureUrl || null,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('LIFF initialization failed:', e);
+        setError('LIFF初期化に失敗しました。ページをリロードしてください。');
+      }
+    })();
+    // 設定が更新されたら再初期化
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liffSettingsQuery.data?.liffId]);
+
+  // whoami（uid cookie の有無）
+  useEffect(() => {
+    fetch('/api/whoami', { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j) => setCookieInfo(j))
+      .catch(() => setCookieInfo(null));
+  }, [isLoggedIn, isAdmin]);
+
+  // secrets 指紋（存在確認）
   useEffect(() => {
     (async () => {
       try {
@@ -194,11 +231,11 @@ export default function Home() {
           const j = await r.json();
           if (j?.exists) setFingerprints(j.fingerprints ?? null);
         }
-      } catch { /* noop */ }
+      } catch {/* noop */ }
     })();
   }, []);
 
-  // ---- set admin cookie --------------------------------------------------
+  // 管理者 cookie 設定
   const firedAdminLoginRef = useRef(false);
   const setAdminCookie = useMutation<
     void,
@@ -214,15 +251,16 @@ export default function Home() {
     if (!userProfile?.userId) return;
     if (firedAdminLoginRef.current) return;
     firedAdminLoginRef.current = true;
-    if (setAdminCookie.isPending) return;
-    setAdminCookie.mutate({
-      lineUserId: userProfile.userId,
-      displayName: userProfile.displayName,
-      pictureUrl: userProfile.pictureUrl ?? null,
-    });
-  }, [userProfile?.userId]);
+    if (!setAdminCookie.isPending) {
+      setAdminCookie.mutate({
+        lineUserId: userProfile.userId,
+        displayName: userProfile.displayName,
+        pictureUrl: userProfile.pictureUrl ?? null,
+      });
+    }
+  }, [userProfile?.userId, setAdminCookie]);
 
-  // ---- fetch my accounts once admin ready -------------------------------
+  // アカウント一覧（admin タブ時）
   useEffect(() => {
     if (isTab === "top") return;
     if (!userProfile?.userId) return;
@@ -244,22 +282,16 @@ export default function Home() {
           .filter((a: { basicId: string }) => a.basicId !== "");
         setAccounts(normalized);
         setBasicId(normalized[0]?.basicId ?? "");
-        setSelectedBasicId(prev => prev || (normalized[0]?.basicId ?? ""));
+        setSelectedBasicId((prev) => prev || (normalized[0]?.basicId ?? ""));
       } catch {
         if (!aborted) { setAccounts([]); setSelectedBasicId(""); }
       }
     })();
+
     return () => { aborted = true; };
-  }, [isAdmin, userProfile?.userId]);
+  }, [isAdmin, userProfile?.userId, cookieInfo?.hasUid, isTab]);
 
-  useEffect(() => {
-    fetch("/api/whoami", { credentials: "include", cache: "no-store" })
-      .then(r => r.json())
-      .then(j => setCookieInfo(j))
-      .catch(() => setCookieInfo(null));
-  }, [isLoggedIn, isAdmin]);
-
-  // ---- resolve lid/form params on first load ----------------------------
+  // URL パラメータ→状態
   useEffect(() => {
     if (pathname === '/open') return;
 
@@ -267,11 +299,9 @@ export default function Home() {
     const lid = sp.get("lid");
     const formParam = sp.get("form");
     const notifyParam = sp.get("notify");
-    const entryParam = sp.get("entry"); // ★ 追加: 手入力 entry を URL から受け取る
+    const entryParam = sp.get("entry");
 
-    if (entryParam) {
-      setOverrideUserEntry(ensureEntryFormat(entryParam));
-    }
+    if (entryParam) setOverrideUserEntry(ensureEntryFormat(entryParam));
 
     if (lid) {
       setIsAutoMode(true);
@@ -284,8 +314,6 @@ export default function Home() {
           if (j.title) setFormTitle(j.title);
           if (j.desc) setFormDescription(j.desc);
           if (j.bgcolor) setFormBgcolor(j.bgcolor);
-
-          // サーバ保存の entry を将来読む場合に備えた互換（あれば反映）
           if (j.entry) setOverrideUserEntry(ensureEntryFormat(String(j.entry)));
         } else {
           showToast("リンクが無効または期限切れです", "error");
@@ -298,83 +326,14 @@ export default function Home() {
 
     if (notifyParam === "0") setNotifyEnabled(false);
     if (notifyParam === "1") setNotifyEnabled(true);
-  }, [pathname]);
+  }, [pathname, showToast]);
 
-  // ---- LIFF 起動の前提を満たすヘルパー ---------------------------------
-  // const ensureLiffReady = async (): Promise<boolean> => {
-  //   const fromForm = liffIdForm.getValues()?.liffId?.trim();
-  //   const fromServer = liffSettingsQuery.data?.liffId?.trim();
-  //   const ok = await liffManager.init({ liffId: fromForm || fromServer || undefined });
-  //   if (!ok) {
-  //     setError("LIFF IDが未設定です。先に「LIFF ID設定」で保存してください。");
-  //   }
-  //   return ok;
-  // };
-  const ensureLiffReady = async () => {
-    const sp = new URLSearchParams(location.search);
-    const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
-    const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
-    const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
-    return await liffManager.init({ liffId: fromForm || fromUrl || fromEnv });
-  };
-
-
-
-  // ---- 手動再ログイン（必ず init → logout → login）---------------------
-  const relogin = async () => {
-    try {
-      const ready = await ensureLiffReady();
-      if (!ready) return;
-
-      if (liffManager.isLoggedIn()) {
-        await liffManager.logout();
-      }
-      await liffManager.login();
-      if (liffManager.isLoggedIn()) {
-        const profile = await liffManager.getProfile();
-        if (profile) {
-          setUserProfile(profile);
-          setIsLoggedIn(true);
-          await saveUserToBackend(profile);
-        }
-        setLineUserId(profile!.userId); // 表示用
-      }
-    } catch (e) {
-      console.error("再ログイン処理に失敗:", e);
-      setError("再ログインに失敗しました。ページをリロードしてください。");
-    }
-  };
-
-  // ---- 初期起動（LIFF解決付き） ----------------------------------------
-  useEffect(() => {
-    (async () => {
-      try {
-        await ensureLiffReady(); // 成否に関わらず UI は出す
-        setIsInitialized(true);
-
-        if (liffManager.isLoggedIn()) {
-          const profile = await liffManager.getProfile();
-          if (profile) {
-            setUserProfile(profile);
-            setIsLoggedIn(true);
-            await saveUserToBackend(profile);
-          }
-        }
-      } catch (e) {
-        console.error('LIFF initialization failed:', e);
-        setError('LIFF初期化に失敗しました。ページをリロードしてください。');
-      }
-    })();
-    // サーバーに保存された LIFF ID が届いたら再初期化
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liffSettingsQuery.data?.liffId]);
-
-  // ---- document title ----------------------------------------------------
+  // タイトル同期
   useEffect(() => {
     if (formTitle) document.title = formTitle;
   }, [formTitle]);
 
-  // ---- normalize view url + auto detection (debounced) ------------------
+  // entry 検出（admin タブ時）
   const viewUrlNormalized = useMemo(() => {
     try {
       return (GoogleFormsManager as any).normalizeFormUrl
@@ -393,8 +352,8 @@ export default function Home() {
       setDetectionError(null);
       return;
     }
-    // 500ms debounce
     if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+
     detectTimerRef.current = window.setTimeout(async () => {
       setIsDetecting(true);
       setDetectionError(null);
@@ -405,7 +364,6 @@ export default function Home() {
           setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
           if (res.title) setFormTitle(res.title);
           if (res.description) setFormDescription(res.description);
-          setDetectionError(null); // 成功時はクリア
         } else {
           setDetectedEntries(null);
           setDetectionError(res?.error || 'entry IDの自動検出に失敗しました。手動で入力してください。');
@@ -420,13 +378,13 @@ export default function Home() {
         setIsDetecting(false);
       }
     }, 500);
+
     return () => {
       if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewUrlNormalized, isAdmin, isTab]);
 
-  // ---- prefill URL generation (auto mode only) --------------------------
+  // prefill URL（自動モード時）
   useEffect(() => {
     (async () => {
       if (userProfile && formUrl && isAutoMode) {
@@ -457,19 +415,19 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
 
-  // ---- update LIFF ID form when query data changes ----------------------
+  // サーバから届いた liffId をフォームに反映
   useEffect(() => {
     if (liffSettingsQuery.data?.success && liffSettingsQuery.data.liffId) {
       liffIdForm.setValue('liffId', liffSettingsQuery.data.liffId);
     }
   }, [liffSettingsQuery.data, liffIdForm]);
 
-  // ---- LIFF ID form handlers ---------------------------------------------
+  /* ------------------------------ Handlers ---------------------------------- */
+
   const onLiffIdSubmit = (data: LiffIdFormData) => {
     saveLiffIdMutation.mutate(data);
   };
 
-  // ---- helpers -----------------------------------------------------------
   const saveUserToBackend = async (profile: LiffProfile) => {
     try {
       await apiRequest('POST', '/api/line-users', {
@@ -485,12 +443,12 @@ export default function Home() {
   const handleLineLogin = async () => {
     const ok = await ensureLiffReady();
     if (!ok) { setError("LIFF ID を URL/フォーム/ENV のいずれかで指定してください。"); return; }
-    await liffManager.login({ redirectUri: location.href }); // ← ここで liffId を付与して戻る（上の login が付け直す）
+    await liffManager.login({ redirectUri: location.href });
   };
 
   const loginMutation = useMutation<LiffProfile, Error>({
     mutationFn: async () => {
-      const ready = await ensureLiffReady(); // ★ 追加
+      const ready = await ensureLiffReady();
       if (!ready) throw new Error('LIFF not ready');
       await liffManager.login();
       const profile = await liffManager.getProfile();
@@ -500,7 +458,7 @@ export default function Home() {
     },
     onSuccess: (profile) => {
       setUserProfile(profile);
-      setLineUserId(profile.userId)
+      setLineUserId(profile.userId);
       setIsLoggedIn(true);
       setError(null);
     },
@@ -510,7 +468,30 @@ export default function Home() {
     },
   });
 
-  // ---- 署名付きリンク生成（admin ボタン）------------------------------
+  const relogin = async () => {
+    try {
+      const ready = await ensureLiffReady();
+      if (!ready) return;
+
+      if (liffManager.isLoggedIn()) {
+        await liffManager.logout();
+      }
+      await liffManager.login();
+      if (liffManager.isLoggedIn()) {
+        const profile = await liffManager.getProfile();
+        if (profile) {
+          setUserProfile(profile);
+          setIsLoggedIn(true);
+          await saveUserToBackend(profile);
+        }
+        setLineUserId((await liffManager.getProfile())!.userId);
+      }
+    } catch (e) {
+      console.error('再ログイン処理に失敗:', e);
+      setError('再ログインに失敗しました。ページをリロードしてください。');
+    }
+  };
+
   const handleGenerateLink = async () => {
     if (!formUrl.trim()) {
       showToast("フォームURLを先に入力してください", "error");
@@ -520,15 +501,17 @@ export default function Home() {
       showToast("LINEログイン後にお試しください（userId 未取得）", "error");
       return;
     }
+
     setIsDetecting(true);
     setSignedLink("");
+
     try {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
       let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
       let nextBgcolor = formBgcolor || "#555555";
 
-      // 検出（任意）
+      // 任意の検出
       try {
         const result = await GoogleFormsManager.detectEntryIds(normalized);
         if (result?.success) {
@@ -537,13 +520,13 @@ export default function Home() {
           setDetectedEntries({ userId: result.userId });
           if (result.userId) setLastDetectionResult({ userId: result.userId, formUrl: normalized });
         }
-      } catch { /* ignore */ }
+      } catch {/* ignore */ }
 
       setFormTitle(nextTitle);
       setFormDescription(nextDesc);
       setFormBgcolor(nextBgcolor);
 
-      // payload 構築（※ 将来サーバ保存するなら使う）
+      // payload
       const payload: Record<string, any> = {
         form: normalized,
         title: String(nextTitle ?? ""),
@@ -551,6 +534,7 @@ export default function Home() {
         notify: notifyEnabled ? 1 : 0,
         bgcolor: nextBgcolor,
       };
+
       if (payload.notify === 1) {
         const picked = (selectedBasicId || basicId || "").trim();
         if (!picked) {
@@ -560,39 +544,34 @@ export default function Home() {
         payload.basicId = picked;
       }
 
-      // 手入力 entry をサーバにも渡しておく（互換用）
       if (overrideUserEntry.trim()) {
         payload.entry = ensureEntryFormat(overrideUserEntry);
       }
 
-      // 現在のLIFF IDを取得してpayloadに追加
-      let currentLiffId: string | null = null;
-      try {
-        const liffResponse = await fetch('/api/liff-settings', {
-          credentials: 'include'
-        });
-        if (liffResponse.ok) {
-          const liffData = await liffResponse.json();
-          if (liffData.success && liffData.liffId) {
-            currentLiffId = liffData.liffId;
-            payload.liffId = currentLiffId;
-          }
-        }
-      } catch (e) {
-        console.warn('LIFF IDの取得に失敗しました:', e);
+      // 現在の LIFF ID を解決（フォーム > URL > サーバ設定 > ENV）
+      const sp = new URLSearchParams(location.search);
+      const liffFromUrl = sp.get("liff") || sp.get("liffId") || undefined;
+      const liffFromForm = liffIdForm.getValues()?.liffId?.trim() || undefined;
+      const liffFromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
+      const liffFromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+      const currentLiffId = liffFromForm || liffFromUrl || liffFromServer || liffFromEnv;
+
+      if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
+        payload.liffId = currentLiffId;
       }
 
+      // 生成
       const r = await fetch("/api/links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const text = await r.text();
+      const t = await r.text();
       let j: any = null;
-      try { j = text ? JSON.parse(text) : null; } catch { /* noop */ }
+      try { j = t ? JSON.parse(t) : null; } catch {/* noop */ }
       if (!r.ok || !j?.ok) {
         const code = j?.code || "UNKNOWN";
-        console.error("links-create error:", { status: r.status, code, detail: j ?? text });
+        console.error("links-create error:", { status: r.status, code, detail: j ?? t });
         const msgMap: Record<string, string> = {
           NO_ADMIN_ID: "（ログイン情報が無効です）",
           BAD_FORM_URL: "フォームURLが正しくありません。",
@@ -602,26 +581,15 @@ export default function Home() {
         showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
         return;
       }
-      // // ★ 生成リンクに entry= を付与して返す（ここが肝）
-      // const baseLink: string = j.link;
-      // const withEntry = overrideUserEntry.trim()
-      //   ? `${baseLink}${baseLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`
-      //   : baseLink;
 
-      // setSignedLink(withEntry);
-      // ★ 生成リンクに entry= と liffId= を付与して返す（ここが肝）
-      const baseLink: string = j.link;
-      let enhancedLink = baseLink;
+      // 返却用リンクを強化：entry と liff を必要なら付与
+      let enhancedLink: string = j.link;
 
-      // entry IDを追加
       if (overrideUserEntry.trim()) {
         enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`;
       }
-
-      // LIFF IDを追加
-      if (currentLiffId) {
+      if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
         enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}liff=${encodeURIComponent(currentLiffId)}`;
-        console.log(`[Generate] LIFF ID追加: ${currentLiffId}`);
       }
 
       setSignedLink(enhancedLink);
@@ -634,14 +602,13 @@ export default function Home() {
     }
   };
 
-  // ---- prefill url builder（自動モードで使う：メッセージは完全廃止） ----
   const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
     try {
       const baseUrl = originalUrl.split('?')[0];
 
-      // ★ 優先度：手入力 > 直近検出 > その場検出 > ダミー
+      // 優先度：手入力 > 直近検出 > その場検出
       let userIdEntry =
-        (overrideUserEntry.trim() ? ensureEntryFormat(overrideUserEntry) : "") ||
+        (overrideUserEntry.trim() ? ensureEntryFormat(overrideUserEntry) : '') ||
         (lastDetectionResult?.formUrl === originalUrl ? lastDetectionResult.userId : detectedEntries?.userId);
 
       if (!userIdEntry) {
@@ -654,7 +621,7 @@ export default function Home() {
             if (detection.title) setFormTitle(detection.title);
             if (detection.description) setFormDescription(detection.description);
           }
-        } catch { /* noop */ }
+        } catch {/* noop */ }
       }
 
       if (!userIdEntry) {
@@ -672,19 +639,7 @@ export default function Home() {
     }
   };
 
-  // helper: "entry.123" の形に整える（数字だけ渡されてもOK）
-  function ensureEntryFormat(s: string): string {
-    const t = s.trim();
-    if (!t) return t;
-    if (/^\d+$/.test(t)) return `entry.${t}`;
-    if (!/^entry\./i.test(t)) {
-      const num = t.match(/(\d{5,})/);
-      if (num) return `entry.${num[1]}`;
-    }
-    return t;
-  }
-
-  // ---- preview url (card image) -----------------------------------------
+  /* ---- preview card image ---- */
   const previewUrl = useMemo(() => {
     if (!viewUrlNormalized) return '';
     const params = new URLSearchParams({
@@ -697,7 +652,7 @@ export default function Home() {
     return `${window.location.origin}/api/link-preview?${params.toString()}`;
   }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
-  // ---- send + navigate (once) -------------------------------------------
+  /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
     if (!userProfile || !generatedUrl) return;
 
@@ -758,7 +713,8 @@ export default function Home() {
     }
   };
 
-  // ---- UI ---------------------------------------------------------------
+  /* --------------------------------- UI ------------------------------------ */
+
   if (pathname === '/open') return null;
 
   if (!isInitialized) {
@@ -786,15 +742,6 @@ export default function Home() {
         </header>
 
         <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
-          {/* 未ログイン & 自動モード */}
-          {/* {!isLoggedIn && isAutoMode && ( */}
-          {/* <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">LINEでログイン</h2>
-                <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-                  LINEアカウントでログインして、ユーザーIDを安全に取得します
-                </p> */}
           <Button
             onClick={handleLineLogin}
             disabled={loginMutation.isPending}
@@ -803,12 +750,7 @@ export default function Home() {
           >
             {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
           </Button>
-          {/* </div>
-            </CardContent>
-          </Card> */}
-          {/* )} */}
 
-          {/* 自動モード：ログイン済み → フォームアクセス */}
           {isLoggedIn && userProfile && formUrl && isAutoMode && (
             isGeneratingUrl ? (
               <div className="text-center">
@@ -830,7 +772,6 @@ export default function Home() {
             )
           )}
 
-          {/* 通常（管理者モード） */}
           {!isAutoMode && isTab !== 'secret' && isTab !== 'howto' && (
             <>
               <Card className="mb-6">
@@ -856,7 +797,6 @@ export default function Home() {
                           className="pr-5 text-gray-500 text-sm bg-blue-200"
                         />
 
-                        {/* ENTRY ID パネル */}
                         {formUrl ? (
                           <div className="mt-3 p-3 rounded border bg-white">
                             <div className="text-xs text-gray-700 mb-2 font-semibold">ENTRY ID 検出結果</div>
@@ -933,7 +873,7 @@ export default function Home() {
                             <select
                               style={{ width: '100%' }}
                               value={selectedBasicId}
-                              onChange={(e) => { setSelectedBasicId(e.target.value), setBasicId(e.target.value); }}
+                              onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
                             >
                               {!accounts.length && <option value="">（未登録）</option>}
                               {accounts.map((a) => {
@@ -948,6 +888,7 @@ export default function Home() {
                             </select>
                           </>
                         )}
+
                         {formUrl &&
                           <Button
                             onClick={handleGenerateLink}
@@ -1001,27 +942,25 @@ export default function Home() {
                       </div>
 
                       {notifyEnabled && (
-                        <>
-                          <div className="border-t pt-4">
-                            <div className="space-y-2">
-                              <p className="text-gray-600 mb-6 text-xs leading-relaxed" style={{ color: !accounts.length ? "red" : undefined }}>
-                                回答通知を受け取るには、公式LINEの設定が必要です
-                              </p>
-                              <Button
-                                onClick={() => {
-                                  handleLineLogin();
-                                  setIsAdmin(false);
-                                  setIsTab('secret');
-                                }}
-                                disabled={loginMutation.isPending}
-                                className="w-full bg-green-600 hover:bg-green-700"
-                                data-testid="button-line-login"
-                              >
-                                {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
-                              </Button>
-                            </div>
+                        <div className="border-t pt-4">
+                          <div className="space-y-2">
+                            <p className="text-gray-600 mb-6 text-xs leading-relaxed" style={{ color: !accounts.length ? 'red' : undefined }}>
+                              回答通知を受け取るには、公式LINEの設定が必要です
+                            </p>
+                            <Button
+                              onClick={() => {
+                                handleLineLogin();
+                                setIsAdmin(false);
+                                setIsTab('secret');
+                              }}
+                              disabled={loginMutation.isPending}
+                              className="w-full bg-green-600 hover:bg-green-700"
+                              data-testid="button-line-login"
+                            >
+                              {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
+                            </Button>
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1058,12 +997,9 @@ export default function Home() {
                           LINE連携に必要なLIFF IDを設定してください
                         </p>
                         <p className="text-sm text-gray-600">
-                          <span className="M7eMe">
-                            <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
-                              LINE Developers Console
-                            </a>
-                          </span>
-                          にログイン
+                          <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                            LINE Developers Console
+                          </a> にログイン
                         </p>
                         <p className="text-sm text-gray-600">
                           <span className="M7eMe">
@@ -1168,21 +1104,22 @@ export default function Home() {
                 </button>
               )}
             </div>
-            {notifyEnabled ?
+            {notifyEnabled && (
               <div className="px-2">
                 {isTab === "secret" ? (
                   <button className="rounded-full h-5 w-5 bg-primary" />
                 ) : (
-                  <button onClick={() => { setIsTab("secret"), setIsAdmin(false) }}>
+                  <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
                     <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
                   </button>
                 )}
-              </div> : null}
+              </div>
+            )}
             <div className="px-2">
               {isTab === "howto" ? (
                 <button className="rounded-full h-5 w-5 bg-primary" />
               ) : (
-                <button onClick={() => { setIsTab("howto"), setIsAdmin(false) }}>
+                <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
                   <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
                 </button>
               )}
@@ -1216,7 +1153,12 @@ export default function Home() {
           </div>
         </footer>
 
-        <ToastNotification message={toast.message} type={toast.type} isVisible={toast.isVisible} onClose={hideToast} />
+        <ToastNotification
+          message={toast.message}
+          type={toast.type}
+          isVisible={toast.isVisible}
+          onClose={hideToast}
+        />
       </div>
     </>
   );
