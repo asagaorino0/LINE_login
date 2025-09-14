@@ -1033,13 +1033,21 @@ export default function Home() {
 
                             <div className="flex items-center justify-between">
                               <div className="text-xs text-gray-600">
-                                {liffSettingsQuery.isLoading ? (
-                                  <span className="text-blue-600">読み込み中...</span>
-                                ) : liffSettingsQuery.data?.success && liffSettingsQuery.data.hasLiffId ? (
-                                  <span className="text-green-700 font-medium">設定済み</span>
-                                ) : (
-                                  <span className="text-orange-600">未設定</span>
-                                )}
+                                {(() => {
+                                  const sp = new URLSearchParams(window.location.search);
+                                  const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                                  const liffIdFromForm = liffIdForm.watch('liffId');
+                                  const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+
+                                  if (liffSettingsQuery.isLoading) {
+                                    return <span className="text-blue-600">読み込み中...</span>;
+                                  }
+                                  return hasLiffId ? (
+                                    <span className="text-green-700 font-medium">設定済み</span>
+                                  ) : (
+                                    <span className="text-orange-600">未設定</span>
+                                  );
+                                })()}
                               </div>
 
                               <Button
