@@ -222,6 +222,18 @@ export default function Home() {
       .catch(() => setCookieInfo(null));
   }, [isLoggedIn, isAdmin]);
 
+  // URLパラメータまたはサーバー設定からLIFF IDをフォームに自動入力
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+
+    if (liffIdFromUrl) {
+      liffIdForm.setValue('liffId', liffIdFromUrl);
+    } else if (liffSettingsQuery.data?.success && liffSettingsQuery.data.liffId) {
+      liffIdForm.setValue('liffId', liffSettingsQuery.data.liffId);
+    }
+  }, [liffSettingsQuery.data, liffIdForm]);
+
   // secrets 指紋（存在確認）
   useEffect(() => {
     (async () => {
