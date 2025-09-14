@@ -203,6 +203,19 @@ export default function Home() {
               displayName: profile.displayName,
               pictureUrl: profile.pictureUrl || null,
             });
+
+            // 初回ログイン時にLIFF IDを自動保存
+            const sp = new URLSearchParams(location.search);
+            const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+            if (liffIdFromUrl && !liffSettingsQuery.data?.hasLiffId) {
+              try {
+                await apiRequest('POST', '/api/liff-settings', { liffId: liffIdFromUrl });
+                console.log('🔄 Auto-saved LIFF ID from URL to CosmosDB');
+                queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
+              } catch (error) {
+                console.error('Failed to auto-save LIFF ID:', error);
+              }
+            }
           }
         }
       } catch (e) {
