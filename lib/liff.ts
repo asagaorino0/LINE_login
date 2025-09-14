@@ -5,128 +5,98 @@ export interface LiffProfile {
   pictureUrl?: string;
 }
 
-type MinimalLiff = {
+type LiffSDK = {
   init(input: { liffId: string }): Promise<void>;
   isLoggedIn(): boolean;
   login(opt?: { redirectUri?: string }): void;
   logout(): void;
   getProfile(): Promise<{ userId: string; displayName: string; pictureUrl?: string }>;
+  getIDToken(): string | null;      // 公式は大文字ID
+  getAccessToken(): string | null;
+  getDecodedIDToken(): any;
 };
 
-let liffLib: MinimalLiff | null = null;
-
+let liffLib: LiffSDK | null = null;
 const LIFF_ID_KEY = "liffId";
 
 export class LiffManager {
   private static instance: LiffManager;
   private initialized = false;
-  private resolvedLiffId: string | null = null;
+  private currentLiffId?: string;
+
   private constructor() { }
   static getInstance(): LiffManager {
     if (!LiffManager.instance) LiffManager.instance = new LiffManager();
     return LiffManager.instance;
   }
-  /** 現在使用中の LIFF ID を返す（未解決なら null） */
+
+  /** 現在使用中の LIFF ID を返す */
   getLiffId() {
-    return this.resolvedLiffId;
+    return this.currentLiffId;
   }
-  /** 初期化（再入可だが多重初期化はスキップ） */
-  async init(opts?: {
-    /** まず /api/liff-settings を見に行く（デフォルト true） */
-    preferServer?: boolean;
-    /** 強制的にこの LIFF ID で起動（URL配布など） */
-    liffIdOverride?: string;
-  }): Promise<boolean> {
-    if (this.initialized) return true;
-    if (typeof window === "undefined") {
-      // SSRでは常に未初期化のまま
-      return false;
+
+  /** 初期化（liffIdOverride > URL > localStorage > env の順で決定） */
+  async init(opts?: { liffIdOverride?: string; preferServer?: boolean }): Promise<boolean> {
+    // preferServer は無視（サーバ参照は呼び出し側で fetch する方針）
+    if (typeof window === "undefined") return false; // SSR対策
+
+    if (!liffLib) {
+      const mod = await import("@line/liff");
+      liffLib = mod.default as unknown as LiffSDK;
     }
-    const preferServer = opts?.preferServer ?? true;
-    let liffId: string | null = null;
-    // 0) 明示指定があればそれを最優先
-    if (opts?.liffIdOverride) {
-      liffId = opts.liffIdOverride.trim();
-      try {
-        localStorage.setItem(LIFF_ID_KEY, liffId);
-      } catch { }
-    }
-    // 1) サーバ保存を参照（uidクッキーがあるときのみ成功）
-    if (!liffId && preferServer) {
-      try {
-        const r = await fetch("/api/liff-settings", { cache: "no-store" });
-        if (r.ok) {
-          const data = await r.json();
-          if (data?.hasLiffId && data?.liffId) {
-            liffId = String(data.liffId);
-            try {
-              localStorage.setItem(LIFF_ID_KEY, liffId);
-            } catch { }
-          }
-        }
-      } catch (e) {
-        console.warn("[LIFF] fetch /api/liff-settings failed:", e);
-      }
-    }
-    // 2) URL ?liffId=... を優先（初回ブート）
-    if (!liffId) {
-      try {
-        const url = new URL(window.location.href);
-        const fromQuery = url.searchParams.get("liffId");
-        if (fromQuery) {
-          liffId = fromQuery;
-          localStorage.setItem(LIFF_ID_KEY, fromQuery);
-        }
-      } catch { }
-    }
-    // 3) localStorage
-    if (!liffId) {
-      try {
-        const saved = localStorage.getItem(LIFF_ID_KEY);
-        if (saved) liffId = saved;
-      } catch { }
-    }
-    // 4) 最後の手段として env
-    if (!liffId) {
-      // ENVゼロ運用想定: ここは無い想定。それでも拾えるように残す。
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      liffId = process.env.NEXT_PUBLIC_LIFF_ID ?? null;
-    }
+
+    // env の安全取得
+    const envLiffId: string | null = (() => {
+      const v = process.env.NEXT_PUBLIC_LIFF_ID; // string | undefined
+      return typeof v === "string" && v.length > 0 ? v : null;
+    })();
+
+    // URLクエリを一度だけパース
+    const sp = new URLSearchParams(window.location.search);
+
+    // liffId 決定順序
+    let liffId: string | null =
+      opts?.liffIdOverride?.trim() ||
+      sp.get("liff") ||
+      sp.get("liffId") ||
+      (() => {
+        try { return localStorage.getItem(LIFF_ID_KEY); } catch { return null; }
+      })() ||
+      envLiffId;
+
     if (!liffId) {
       console.warn("[LIFF] liffId not found. Initialization skipped.");
       this.initialized = false;
-      this.resolvedLiffId = null;
+      this.currentLiffId = undefined;
       return false;
     }
-    // SDK 読み込みは1回だけ
-    if (!liffLib) {
-      try {
-        const mod = await import("@line/liff");
-        liffLib = mod.default as MinimalLiff;
-      } catch (e) {
-        console.warn("[LIFF] failed to import SDK:", e);
+
+    // 既に初期化済みで、同じ liffId なら再初期化不要
+    if (this.initialized) {
+      if (this.currentLiffId && this.currentLiffId !== liffId) {
+        // 異なる LIFF ID での再初期化を許可する場合のみリセット
+        try { liffLib.logout?.(); } catch { }
         this.initialized = false;
-        return false;
+      } else {
+        return true;
       }
     }
+
     try {
       await liffLib.init({ liffId });
       this.initialized = true;
-      this.resolvedLiffId = liffId;
+      this.currentLiffId = liffId;
+      try { localStorage.setItem(LIFF_ID_KEY, liffId); } catch { }
       return true;
     } catch (e) {
-      console.warn("[LIFF] init failed:", e);
+      console.error("[LIFF] init failed:", e);
       this.initialized = false;
-      this.resolvedLiffId = null;
+      this.currentLiffId = undefined;
       return false;
     }
   }
-  /** すでにログインしているか（初期化済み前提） */
-  isLoggedIn(): boolean {
-    return !!(this.initialized && liffLib && liffLib.isLoggedIn());
-  }
-  /** ログイン必須の画面で使う：未ログインなら LINE ログインへ遷移 */
+
+  /** 旧コード互換：未ログインなら LINE ログインへ遷移 */
   ensureLogin(redirectUri?: string) {
     if (!this.initialized || !liffLib) {
       console.warn("[LIFF] ensureLogin called before init().");
@@ -136,46 +106,67 @@ export class LiffManager {
       liffLib.login(redirectUri ? { redirectUri } : undefined);
     }
   }
-  /** 任意トリガーでログイン開始（遷移します） */
-  login(redirectUri?: string) {
-    if (!this.initialized || !liffLib) {
-      console.warn("[LIFF] login called before init().");
-      return;
-    }
-    liffLib.login(redirectUri ? { redirectUri } : undefined);
+
+  isLoggedIn(): boolean {
+    return !!(this.initialized && liffLib && liffLib.isLoggedIn());
   }
-  /** ログアウト（必要に応じて localStorage の LIFF ID は保持） */
-  logout({ clearCachedLiffId = false }: { clearCachedLiffId?: boolean } = {}) {
-    if (!this.initialized || !liffLib) {
-      console.warn("[LIFF] logout called before init().");
-      return;
+
+  login(redirectUri?: string) {
+    if (!liffLib) return;
+    try {
+      liffLib.login(redirectUri ? { redirectUri } : undefined);
+    } catch (e) {
+      console.error("[LIFF] login failed:", e);
     }
+  }
+
+  logout() {
+    if (!liffLib) return;
     try {
       liffLib.logout();
-    } finally {
-      if (clearCachedLiffId) {
-        try {
-          localStorage.removeItem(LIFF_ID_KEY);
-        } catch { }
-      }
+      this.initialized = false;
+    } catch (e) {
+      console.error("[LIFF] logout failed:", e);
     }
   }
-  /** プロフィール取得（未初期化/未ログインなら null） */
+
   async getProfile(): Promise<LiffProfile | null> {
-    if (!this.initialized || !liffLib || !liffLib.isLoggedIn()) return null;
+    if (!this.isLoggedIn() || !liffLib) return null;
     try {
       const p = await liffLib.getProfile();
-      return {
-        userId: p.userId,
-        displayName: p.displayName,
-        pictureUrl: p.pictureUrl,
-      };
+      return { userId: p.userId, displayName: p.displayName, pictureUrl: p.pictureUrl };
     } catch (e) {
-      console.warn("[LIFF] getProfile failed:", e);
+      console.error("[LIFF] getProfile failed:", e);
+      return null;
+    }
+  }
+
+  /** getIDToken() を隠蔽したラッパー（サーバ検証用に使用） */
+  async getIdToken(): Promise<string | null> {
+    try {
+      return liffLib?.getIDToken?.() ?? null;
+    } catch (e) {
+      console.error("[LIFF] getIDToken failed:", e);
+      return null;
+    }
+  }
+
+  getAccessToken(): string | null {
+    try {
+      return liffLib?.getAccessToken?.() ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  getDecodedIDToken(): any | null {
+    try {
+      return liffLib?.getDecodedIDToken?.() ?? null;
+    } catch {
       return null;
     }
   }
 }
 
-// 使い方例
+// 使い回し用シングルトン
 export const liffManager = LiffManager.getInstance();

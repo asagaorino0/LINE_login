@@ -33,16 +33,25 @@ export default function OpenFormClient() {
           throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
         }
 
-        // 2) リンクから LIFF ID を取得して初期化
+        // 2) リンクから LIFF ID を取得（クエリ指定で上書き可）
         let liffIdToUse: string | undefined = linkData.liffId || undefined;
+        const fromQuery = qs.get("liff") || qs.get("liffId"); // 例: &liff=2008088055-gKXl6W1p
+        if (fromQuery) liffIdToUse = fromQuery || undefined;
 
-        // ▼ URLクエリによる上書き（暫定テストに便利。例: &liff=2008088055-gKXl6W1p）
-        const fromQuery = qs.get("liff") || qs.get("liffId");
-        if (fromQuery) liffIdToUse = fromQuery;
+        console.log(
+          "[open] liffId (link) =",
+          linkData.liffId,
+          " / (query) =",
+          fromQuery,
+          " / (use) =",
+          liffIdToUse
+        );
 
-        console.log("[open] liffId (link) =", linkData.liffId, " / (query) =", fromQuery, " / (use) =", liffIdToUse);
+        if (!liffIdToUse) {
+          throw new Error("LIFF ID が未設定です。リンク設定またはURLクエリ（&liff=...）を確認してください。");
+        }
 
-        // --- LIFF 初期化 ---
+        // --- ここが重要：リンクの liffId で init → login 判定 ---
         const ok = await liffManager.init({ liffIdOverride: liffIdToUse });
         console.log("[open] init() ok =", ok, "resolved =", liffManager.getLiffId?.());
         if (!ok) {
@@ -54,6 +63,21 @@ export default function OpenFormClient() {
           liffManager.login(location.href);
           return; // いったん終了（復帰後に再実行される）
         }
+
+        // ログイン後に IDトークンを取得して API へ（401対策）
+        const idToken = await liffManager.getIdToken(); // liff.getIDToken()
+        if (!idToken) throw new Error("LINE IDトークン取得失敗");
+
+        const res = await fetch("/api/liff-settings", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(`liff-settings NG: ${res.status} ${t}`);
+        }
+        const data = await res.json();
+        console.log("[open] /api/liff-settings OK:", data);
 
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
@@ -93,8 +117,9 @@ export default function OpenFormClient() {
         if (!userEntry) throw new Error("Entry IDが取得できませんでした。");
 
         // 5) prefill URL を生成（?usp=pp_url&entry.xxx=<userId>）
-        const prefill =
-          `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
+        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(
+          profile.userId
+        )}`;
         console.log("[open] prefill =", prefill);
 
         // 6) LINE 送信用の通知（必要に応じてカード送信など）
@@ -144,9 +169,7 @@ export default function OpenFormClient() {
       {err ? (
         <div className="text-center max-w-md">
           <div className="text-red-600 mb-2">エラーが発生しました</div>
-          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">
-            {err}
-          </div>
+          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
           <div className="mt-4 text-xs text-gray-400">
             ページを再読み込みするか、管理者にお問い合わせください。
           </div>
@@ -160,3 +183,4 @@ export default function OpenFormClient() {
     </div>
   );
 }
+
