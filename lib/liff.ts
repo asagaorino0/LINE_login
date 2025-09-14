@@ -67,12 +67,15 @@ export class LiffManager {
   async init(opts?: { liffId?: string }): Promise<boolean> {
     await this.importSdk();
 
+    const urlId = this.liffIdFromUrl();
+    const envId = process.env.NEXT_PUBLIC_LIFF_ID || "";
+
     const resolved =
       (opts?.liffId && opts.liffId.trim()) ||
       this.currentLiffId ||
-      (await this.liffIdFromServer()) ||
-      this.liffIdFromUrl() ||
-      (process.env.NEXT_PUBLIC_LIFF_ID || "");
+      urlId ||
+      envId ||
+      (await this.liffIdFromServer());
 
     if (!resolved) {
       console.warn("[LIFF] liffId not found. Initialization skipped.");
