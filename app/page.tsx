@@ -1011,7 +1011,7 @@ export default function Home() {
                       </div>
                       {/* Debug: ユーザー情報表示 */}
                       {`${lineUserId}`}
-                      <Button onClick={relogin} disabled={false} className="w-full bg-[#00be00]">
+                      <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
                         ログイン
                       </Button>
                       {isLoggedIn && userProfile && (
