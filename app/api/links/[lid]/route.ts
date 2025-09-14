@@ -116,16 +116,12 @@ export async function GET(_req: Request, context: any) {
       return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
     }
 
-    const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry } = resource;
+    const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry, liffId } = resource;
     return NextResponse.json(
-      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry },
+      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry, liffId },
       { status: 200 }
     );
   } catch (e) {
     return NextResponse.json({ ok: false, code: "LINKS_READ_FAILED" }, { status: 500 });
   }
 }
-
-
-
-
