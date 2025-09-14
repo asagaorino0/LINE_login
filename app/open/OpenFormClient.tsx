@@ -12,121 +12,72 @@ export default function OpenFormClient() {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
-        const lid = qs.get("lid"); // ★ 必須：リンクID
+        const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        console.log("[open] lid =", lid);
-
-        // 1) lid からリンク情報を取得（formUrl, liffId など）
+        // 1) リンク情報
         const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
-        const linkData = await linkResp.json();
-        if (!linkResp.ok || !linkData?.ok) {
-          const errorCode = linkData?.code || "LINK_NOT_FOUND";
-          const errorMap: Record<string, string> = {
-            NO_LID: "リンクIDが指定されていません",
-            NOT_FOUND: "指定されたリンクが見つかりません",
-            LID_DISABLED: "このリンクは無効化されています",
-            LID_EXPIRED: "このリンクは期限切れです",
-            LINK_NOT_FOUND: "リンクが見つかりません",
-            LID_NOT_FOUND: "リンクが見つかりません",
-          };
-          throw new Error(errorMap[errorCode] || `リンクエラー: ${errorCode}`);
+        const link = await linkResp.json();
+        if (!linkResp.ok || !link?.ok) {
+          const code = link?.code || "LINK_NOT_FOUND";
+          throw new Error(code);
         }
 
-        // 2) リンクから LIFF ID を取得（クエリ指定で上書き可）
-        let liffIdToUse: string | undefined = linkData.liffId || undefined;
-        const fromQuery = qs.get("liff") || qs.get("liffId"); // 例: &liff=1234567890-AbCdEfGh
-        if (fromQuery) liffIdToUse = fromQuery || undefined;
-
-        console.log(
-          "[open] liffId (link) =",
-          linkData.liffId,
-          " / (query) =",
-          fromQuery,
-          " / (use) =",
-          liffIdToUse
-        );
-
-        if (!liffIdToUse) {
-          throw new Error("LIFF ID が未設定です。リンク設定またはURLクエリ（&liffId=...）を確認してください。管理者は /admin/migrate でデータ移行してください。");
+        // 2) LIFF ID の決定（URL > link.liffId > env）
+        const liffFromQuery = qs.get("liff") || qs.get("liffId");
+        const liffToUse = (liffFromQuery || link.liffId || undefined) as string | undefined;
+        if (!liffToUse) {
+          throw new Error("LIFF ID が未設定です。URLに &liff=... を付けるか、link.liffId を保存してください。");
         }
 
-        // --- ここが重要：リンクの liffId で init → login 判定 ---
-        //        const ok = await liffManager.init({ liffIdOverride: liffIdToUse });
-        const ok = await liffManager.init({ liffId: liffIdToUse }); // ← 修正: liffIdOverride ではない
-        console.log("[open] init() ok =", ok, "resolved =", liffManager.getLiffId());
-        if (!ok) {
-          throw new Error("LIFF初期化に失敗しました。liffId が不正か、LIFFアプリが無効/削除されています。");
-        }
+        const ok = await liffManager.init({ liffId: liffToUse });
+        if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
         if (!liffManager.isLoggedIn()) {
-          // 戻り先は現在URL
-          //    liffManager.login(location.href);
-          await liffManager.login({ redirectUri: location.href }); // ← 修正: 引数オブジェクト
-          return; // いったん終了（復帰後に再実行される）
+          // 現在URLに liffId を付けて戻す（liff.ts 内でも付け直しますが念のため）
+          const back = new URL(location.href);
+          back.searchParams.set("liffId", liffToUse);
+          await liffManager.login({ redirectUri: back.toString() });
+          return;
         }
 
-        // ログイン後に IDトークンを取得して API へ（401対策）
-        const idToken = await liffManager.getIdToken(); // ← 追加メソッド
-        if (!idToken) throw new Error("LINE IDトークン取得失敗");
-
-        // ※ サーバ側が Authorization を見ていない場合は不要。あなたの実装に合わせて。
-        const res = await fetch("/api/liff-settings", {
-          headers: { Authorization: `Bearer ${idToken}` },
-          credentials: "include",
-        });
-        if (!res.ok) {
-          const t = await res.text();
-          throw new Error(`liff-settings NG: ${res.status} ${t}`);
-        }
-        const data = await res.json();
-        console.log("[open] /api/liff-settings OK:", data);
-
+        // 3) ユーザー保存（Cookie要るなら /api/line-admin もここで）
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
-        console.log("[open] profile OK:", profile.userId);
 
-        // 3) フォームURL正規化
-        const link = linkData;
+        // （任意）管理者Cookie化が必要なら：await fetch("/api/line-admin", { method:"POST", body: JSON.stringify({...}) })
+        await fetch("/api/line-users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            lineUserId: profile.userId,
+            displayName: profile.displayName,
+            pictureUrl: profile.pictureUrl ?? null,
+          }),
+        });
+
+        // 4) フォームURL → view に正規化
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
 
-        // 4) UID を入れる entry の決定（URL>サーバー保存>自動検出）
+        // 5) entry 決定（URL > link.entry > 自動検出）
         const entryFromUrl = qs.get("entry");
         let userEntry: string | null = null;
-
         if (entryFromUrl) {
           userEntry = entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`;
-          console.log("[open] 🎯 Using manual entry ID from URL:", userEntry);
         } else if (link.entry) {
           userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
-          console.log("[open] 🎯 Using manual entry ID from server:", userEntry);
         } else {
-          try {
-            console.log("[open] 🔍 Detecting entry ID for:", viewUrl);
-            const det = await GoogleFormsManager.detectEntryIds(viewUrl);
-            console.log("[open] Detection result:", det);
-            if (det?.success && det.userId) {
-              userEntry = det.userId;
-              console.log("[open] ✅ Using auto-detected entry ID:", userEntry);
-            } else {
-              throw new Error("Entry ID detection failed");
-            }
-          } catch (e) {
-            console.warn("[open] ❌ Entry ID detection error:", e);
-            throw new Error("このフォームでは自動UID連携に対応していません。手動でentry IDを指定してください。");
-          }
+          const det = await GoogleFormsManager.detectEntryIds(viewUrl).catch(() => null);
+          if (det?.success && det.userId) userEntry = det.userId;
+          if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
 
-        if (!userEntry) throw new Error("Entry IDが取得できませんでした。");
+        // 6) prefill 作成
+        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // 5) prefill URL を生成（?usp=pp_url&entry.xxx=<userId>）
-        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(
-          profile.userId
-        )}`;
-        console.log("[open] prefill =", prefill);
-
-        // 6) LINE 送信用の通知（必要に応じてカード送信など）
-        if (!sentRef.current) {
+        // 7) （通知ONなら）LINEへ送信
+        if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
             userId: profile.userId,
@@ -135,9 +86,8 @@ export default function OpenFormClient() {
             title: link.title || "Googleフォーム",
             desc: link.desc || "フォームに回答してください。",
             bgcolor: link.bgcolor,
-            lid, // これで adminKey が一意に解決される
+            lid,
           };
-          console.log("[open] payload to /api/line 色=", payload.bgcolor, link);
           try {
             let sent = false;
             if ("sendBeacon" in navigator) {
@@ -145,20 +95,17 @@ export default function OpenFormClient() {
               sent = navigator.sendBeacon("/api/line", blob);
             }
             if (!sent) {
-              const rr = await fetch("/api/line", {
+              await fetch("/api/line", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
                 keepalive: true,
               });
-              console.log("[open] fetch /api/line status =", rr.status);
             }
-          } catch (e) {
-            console.warn("[open] send to /api/line failed:", e);
-          }
+          } catch { /* ignore */ }
         }
 
-        // 7) 少し待ってからフォームへ遷移
+        // 8) 遷移
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
@@ -173,13 +120,11 @@ export default function OpenFormClient() {
         <div className="text-center max-w-md">
           <div className="text-red-600 mb-2">エラーが発生しました</div>
           <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
-          <div className="mt-4 text-xs text-gray-400">
-            ページを再読み込みするか、管理者にお問い合わせください。
-          </div>
+          <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
         </div>
       ) : (
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
           <div>フォームへ遷移中…</div>
         </div>
       )}
