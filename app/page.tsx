@@ -207,7 +207,8 @@ export default function Home() {
             // 初回ログイン時にLIFF IDを自動保存
             const sp = new URLSearchParams(location.search);
             const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-            if (liffIdFromUrl && !liffSettingsQuery.data?.hasLiffId) {
+            //            if (liffIdFromUrl && !liffSettingsQuery.data?.hasLiffId) {
+            if (liffIdFromUrl && (liffSettingsQuery.isSuccess && !liffSettingsQuery.data?.hasLiffId)) {
               try {
                 await apiRequest('POST', '/api/liff-settings', { liffId: liffIdFromUrl });
                 console.log('🔄 Auto-saved LIFF ID from URL to CosmosDB');
@@ -225,7 +226,8 @@ export default function Home() {
     })();
     // 設定が更新されたら再初期化
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liffSettingsQuery.data?.liffId]);
+    // }, [liffSettingsQuery.data?.liffId]);
+  }, [liffSettingsQuery.data?.liffId, cookieInfo?.hasUid]);
 
   // whoami（uid cookie の有無）
   useEffect(() => {
