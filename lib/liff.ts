@@ -136,10 +136,8 @@ export class LiffManager {
 
   isLoggedIn(): boolean {
     try {
-      // 厳密なLINE環境チェック - LINE外では絶対にfalse
-      if (!this.isInLineEnvironment()) {
-        return false;
-      }
+      // LINE環境外では常にfalse
+      if (!this.inClient()) return false;
       return !!liffLib && !!liffLib.isLoggedIn?.();
     } catch {
       return false;
@@ -187,12 +185,8 @@ export class LiffManager {
 
   async getProfile(): Promise<LiffProfile | null> {
     if (!this.isInitialized) return null;
-
-    // 実際のLINE環境でない場合はプロファイルを返さない
-    if (!this.isInLineEnvironment()) {////add
-      console.log("[LIFF] Not in LINE environment, profile access denied");
-      return null;
-    }
+    // LINE環境外では常にnull
+    if (!this.inClient()) return null;
 
     try {
       const p = await liffLib.getProfile();
