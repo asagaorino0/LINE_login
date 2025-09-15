@@ -204,10 +204,23 @@ export default function Home() {
               pictureUrl: profile.pictureUrl || null,
             });
 
+            // ログイン後に保存された画面状態を復元
+            try {
+              const savedState = sessionStorage.getItem('appState');
+              if (savedState) {
+                const { isTab: savedTab, isAdmin: savedAdmin, isAutoMode: savedAutoMode } = JSON.parse(savedState);
+                setIsTab(savedTab);
+                setIsAdmin(savedAdmin);
+                setIsAutoMode(savedAutoMode);
+                sessionStorage.removeItem('appState'); // 復元後は削除
+              }
+            } catch (error) {
+              console.error('Failed to restore app state:', error);
+            }
+
             // 初回ログイン時にLIFF IDを自動保存
             const sp = new URLSearchParams(location.search);
             const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-            //            if (liffIdFromUrl && !liffSettingsQuery.data?.hasLiffId) {
             if (liffIdFromUrl && (liffSettingsQuery.isSuccess && !liffSettingsQuery.data?.hasLiffId)) {
               try {
                 await apiRequest('POST', '/api/liff-settings', { liffId: liffIdFromUrl });
@@ -226,7 +239,6 @@ export default function Home() {
     })();
     // 設定が更新されたら再初期化
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // }, [liffSettingsQuery.data?.liffId]);
   }, [liffSettingsQuery.data?.liffId, cookieInfo?.hasUid]);
 
   // whoami（uid cookie の有無）
@@ -414,10 +426,21 @@ export default function Home() {
   // prefill URL（自動モード時）
   useEffect(() => {
     (async () => {
-      if (userProfile && formUrl && isAutoMode) {
+      if (formUrl && isAutoMode) {
+        // For notifications enabled: require userProfile
+        // For notifications disabled: generate URL without userProfile if possible
+        if (notifyEnabled && !userProfile) {
+          setGeneratedUrl(null);
+          setIsGeneratingUrl(false);
+          return;
+        }
+
         setIsGeneratingUrl(true);
         try {
-          const url = await generatePrefillUrl(formUrl, userProfile.userId);
+          const userId = userProfile?.userId || 'anonymous';
+          // const url = await generatePrefillUrl(formUrl, userProfile.userId);
+          // setGeneratedUrl(url);
+          const url = await generatePrefillUrl(formUrl, userId);
           setGeneratedUrl(url);
         } catch (e) {
           console.error('URL generation failed:', e);
@@ -431,16 +454,47 @@ export default function Home() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile?.userId, formUrl, isAutoMode, lastDetectionResult?.userId, detectedEntries?.userId, overrideUserEntry]);
+  }, [
+    userProfile?.userId,
+    formUrl,
+    isAutoMode,
+    lastDetectionResult?.userId,
+    detectedEntries?.userId,
+    overrideUserEntry,
+    notifyEnabled///add
+  ]);
 
   // ---- auto open once ----------------------------------------------------
+  // useEffect(() => {
+  //   if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
+  //     autoTriggeredRef.current = true;
+  //     void sendLineMessageAndOpenForm(false);
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
   useEffect(() => {
-    if (isAutoMode && isLoggedIn && userProfile && generatedUrl && !autoTriggeredRef.current) {
-      autoTriggeredRef.current = true;
-      void sendLineMessageAndOpenForm(false);
+    if (isAutoMode && generatedUrl && !autoTriggeredRef.current) {
+      // For notifications enabled: require login
+      // For notifications disabled: no login required
+      if (notifyEnabled) {
+        if (isLoggedIn && userProfile) {
+          autoTriggeredRef.current = true;
+          void sendLineMessageAndOpenForm(false);
+        }
+      } else {
+        // No login required when notifications are disabled
+        autoTriggeredRef.current = true;
+        void sendLineMessageAndOpenForm(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAutoMode, isLoggedIn, userProfile?.userId, generatedUrl]);
+  }, [
+    isAutoMode,
+    isLoggedIn,
+    userProfile?.userId,
+    generatedUrl,
+    notifyEnabled///add
+  ]);
 
   // サーバから届いた liffId をフォームに反映
   useEffect(() => {
@@ -470,6 +524,15 @@ export default function Home() {
   const handleLineLogin = async () => {
     const ok = await ensureLiffReady();
     if (!ok) { setError("LIFF ID を URL/フォーム/ENV のいずれかで指定してください。"); return; }
+
+    // ログイン前に現在の画面状態を保存
+    sessionStorage.setItem('returnTo', location.href);
+    sessionStorage.setItem('appState', JSON.stringify({
+      isTab,
+      isAdmin,
+      isAutoMode
+    }));
+
     await liffManager.login({ redirectUri: location.href });
   };
 
@@ -524,9 +587,30 @@ export default function Home() {
       showToast("フォームURLを先に入力してください", "error");
       return;
     }
-    if (!userProfile?.userId) {
-      showToast("LINEログイン後にお試しください（userId 未取得）", "error");
+
+    // 通知が有効な場合のみユーザープロファイルが必要
+    // if (!userProfile?.userId) {
+    //   showToast("LINEログイン後にお試しください（userId 未取得）", "error");
+    //   return;
+    // }
+    if (notifyEnabled && !userProfile?.userId) {
+      showToast("通知を送信するにはLINEログインが必要です", "error");
       return;
+    }
+
+    // 通知が無効な場合でもLIFF IDは必要
+    if (!notifyEnabled) {
+      const sp = new URLSearchParams(location.search);
+      const liffFromUrl = sp.get("liff") || sp.get("liffId") || undefined;
+      const liffFromForm = liffIdForm.getValues()?.liffId?.trim() || undefined;
+      const liffFromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
+      const liffFromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
+      const currentLiffId = liffFromForm || liffFromUrl || liffFromServer || liffFromEnv;
+
+      if (!currentLiffId || !LIFF_ID_RE.test(currentLiffId)) {
+        showToast("LIFF IDを正しく入力してください", "error");
+        return;
+      }
     }
 
     setIsDetecting(true);
@@ -681,7 +765,9 @@ export default function Home() {
 
   /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
-    if (!userProfile || !generatedUrl) return;
+    //    if (!userProfile || !generatedUrl) return;
+    if (!generatedUrl) return;
+    if (notifyEnabled && !userProfile) return;
 
     const qs = new URLSearchParams(window.location.search);
     const lid = qs.get("lid") || "";
@@ -691,7 +777,8 @@ export default function Home() {
     const sig = qs.get("sig") || "";
     const debug = qs.get("debug") === "1";
 
-    if (!messageSentRef.current && notifyEnabled) {
+    //    if (!messageSentRef.current && notifyEnabled) {
+    if (!messageSentRef.current && notifyEnabled && userProfile) {
       messageSentRef.current = true;
       const payload = {
         userId: userProfile.userId,
@@ -769,16 +856,19 @@ export default function Home() {
         </header>
 
         <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
-          <Button
-            onClick={handleLineLogin}
-            disabled={loginMutation.isPending}
-            className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
-            data-testid="button-line-login"
-          >
-            {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
-          </Button>
+          {/* Show login button only when needed for auto-mode AND notifications enabled */}
+          {isAutoMode && !isLoggedIn && notifyEnabled && (
+            <Button
+              onClick={handleLineLogin}
+              disabled={loginMutation.isPending}
+              className="w-full bg-line-green hover:bg-line-brand text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200 min-h-[48px]"
+              data-testid="button-line-login"
+            >
+              {loginMutation.isPending ? '認証中...' : 'LINEでログイン'}
+            </Button>
+          )}
 
-          {isLoggedIn && userProfile && formUrl && isAutoMode && (
+          {formUrl && isAutoMode && (
             isGeneratingUrl ? (
               <div className="text-center">
                 <h3 className="text-base font-semibold">
@@ -786,16 +876,19 @@ export default function Home() {
                 </h3>
               </div>
             ) : (
-              <button
-                onClick={() => sendLineMessageAndOpenForm(true)}
-                disabled={isSendingMessage || !generatedUrl}
-                className="w-full p-0 h-auto"
-                data-testid="button-access-form"
-              >
-                <div className="text-center text-blue">
-                  <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
-                </div>
-              </button>
+              // Show manual access button regardless of login status when notifications are disabled
+              (notifyEnabled ? (isLoggedIn && userProfile) : true) && (
+                <button
+                  onClick={() => sendLineMessageAndOpenForm(true)}
+                  disabled={isSendingMessage || !generatedUrl}
+                  className="w-full p-0 h-auto"
+                  data-testid="button-access-form"
+                >
+                  <div className="text-center text-blue">
+                    <p className="text-sm text-blue-800 mt-6">自動でフォームにアクセスしない時はここをクリック</p>
+                  </div>
+                </button>
+              )
             )
           )}
 
@@ -882,39 +975,105 @@ export default function Home() {
                           </div>
                         ) : null}
 
-                        <div className="my-3 flex items-center space-x-2">
-                          <input
-                            id="notify"
-                            type="checkbox"
-                            checked={notifyEnabled}
-                            onChange={(e) => setNotifyEnabled(e.target.checked)}
-                            className="h-4 w-4 text-green-600 border-gray-300 rounded"
-                          />
-                          <label htmlFor="notify" className="text-base text-gray-700">
-                            回答通知を公式LINEで受け取る
-                          </label>
+                        {/* Notification Settings Section */}
+                        <div className="my-4 p-4 bg-gray-50 rounded-lg border">
+                          <h4 className="text-sm font-semibold text-gray-800 mb-3">通知設定</h4>
+
+                          {/* Notification Enable Checkbox */}
+                          <div className="flex items-center space-x-3 mb-3">
+                            <input
+                              id="notify"
+                              type="checkbox"
+                              checked={notifyEnabled}
+                              onChange={(e) => {
+                                setNotifyEnabled(e.target.checked);
+                                // handleLineLogin(),
+                              }}
+                              className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                              data-testid="checkbox-enable-notifications"
+                            />
+                            <label htmlFor="notify" className="text-sm text-gray-700 font-medium">
+                              フォーム回答通知を公式LINEで受け取る
+                            </label>
+                          </div>
+
+                          {/* Conditional Notification Configuration */}
+                          {notifyEnabled && (
+                            <div className="mt-3 p-3 bg-white rounded border">
+                              {!cookieInfo?.hasUid ? (
+                                // Show login prompt when notifications enabled but not logged in
+                                <div className="text-center">
+                                  <p className="text-sm text-gray-600 mb-3">
+                                    通知機能を使用するにはLINEログインが必要です
+                                  </p>
+                                  <Button
+                                    onClick={() => {
+                                      // ログイン後にチャネル設定画面に戻るよう状態を事前保存
+                                      sessionStorage.setItem('appState', JSON.stringify({
+                                        isTab: 'secret',
+                                        isAdmin: false,
+                                        isAutoMode: false
+                                      }));
+                                      handleLineLogin();
+                                    }}
+                                    disabled={loginMutation.isPending}
+                                    className="bg-[#00be00] hover:bg-[#00a000] text-white"
+                                    data-testid="button-login-for-notifications"
+                                  >
+                                    {loginMutation.isPending ? '認証中...' : 'LINEログインして通知を設定'}
+                                  </Button>
+                                </div>
+                              ) : (
+                                // Show notification configuration when logged in
+                                <div>
+                                  <label className="block text-sm text-gray-700 mb-2">受信用公式LINE</label>
+                                  <select
+                                    className="w-full p-2 border border-gray-300 rounded text-sm"
+                                    value={selectedBasicId}
+                                    onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
+                                    data-testid="select-basic-id"
+                                  >
+                                    {!accounts.length && <option value="">（未登録）</option>}
+                                    {accounts.map((a) => {
+                                      const text = (a.channelName || a.basicId);
+                                      const fontSize = text.length > 20 ? "12px" : "14px";
+                                      return (
+                                        <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
+                                          {text}
+                                        </option>
+                                      );
+                                    })}
+                                  </select>
+                                  {!accounts.length && (
+                                    <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
+                                      <p className="text-xs text-amber-700">
+                                        公式LINEアカウントが未登録です。設定画面で公式LINEを登録してください。
+                                      </p>
+                                      <Button
+                                        onClick={() => {
+                                          setIsAdmin(false);
+                                          setIsTab('secret');
+                                        }}
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2 text-xs"
+                                        data-testid="button-goto-line-settings"
+                                      >
+                                        公式LINE設定画面へ
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!notifyEnabled && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              通知を無効にした場合、フォーム回答の通知は送信されません
+                            </p>
+                          )}
                         </div>
-                        {notifyEnabled && (
-                          <>
-                            <label className="text-sm text-gray-700">受信用公式LINE</label>
-                            <select
-                              style={{ width: '100%' }}
-                              value={selectedBasicId}
-                              onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
-                            >
-                              {!accounts.length && <option value="">（未登録）</option>}
-                              {accounts.map((a) => {
-                                const text = (a.channelName || a.basicId);
-                                const fontSize = text.length > 20 ? "12px" : "14px";
-                                return (
-                                  <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
-                                    {text}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </>
-                        )}
 
                         {formUrl &&
                           <Button
@@ -968,7 +1127,7 @@ export default function Home() {
                         }
                       </div>
 
-                      {notifyEnabled && (
+                      {/* {notifyEnabled && (
                         <div className="border-t pt-4">
                           <div className="space-y-2">
                             <p className="text-gray-600 mb-6 text-xs leading-relaxed" style={{ color: !accounts.length ? 'red' : undefined }}>
@@ -988,7 +1147,7 @@ export default function Home() {
                             </Button>
                           </div>
                         </div>
-                      )}
+                      )} */}
                     </div>
                   )}
                   {isTab === 'top' && (
@@ -1008,15 +1167,15 @@ export default function Home() {
                         </div>
                       </div>
                       {/* Debug: ユーザー情報表示 */}
-                      {`${lineUserId}`}
-                      <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
+                      {/* {`${lineUserId}`} */}
+                      {/* <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
                         ログイン
-                      </Button>
-                      {isLoggedIn && userProfile && (
+                      </Button> */}
+                      {/* {isLoggedIn && userProfile && (
                         <div className="p-2 bg-gray-100 rounded text-xs text-gray-600 mb-2">
                           ユーザーID: {userProfile.userId}
                         </div>
-                      )}
+                      )} */}
                       {/* LIFF ID 設定フォーム */}
                       <div className="p-3 bg-blue-50 rounded-lg mb-4">
                         <h5 className="text-sm font-semibold text-gray-800 mb-1">LIFF ID設定</h5>
@@ -1058,7 +1217,7 @@ export default function Home() {
                               )}
                             />
 
-                            <div className="flex items-center justify-between">
+                            {/* <div className="flex items-center justify-between">
                               <div className="text-xs text-gray-600">
                                 {(() => {
                                   const sp = new URLSearchParams(window.location.search);
@@ -1086,7 +1245,7 @@ export default function Home() {
                               >
                                 {saveLiffIdMutation.isPending ? '保存中...' : '保存'}
                               </Button>
-                            </div>
+                            </div> */}
                           </form>
                         </Form>
                       </div>
@@ -1100,14 +1259,14 @@ export default function Home() {
                           const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
                           const liffIdFromForm = liffIdForm.watch('liffId');
                           const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return !isLoggedIn || !hasLiffId;
+                          return !hasLiffId;
                         })()}
                         className={`w-full mt-2 ${(() => {
                           const sp = new URLSearchParams(window.location.search);
                           const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
                           const liffIdFromForm = liffIdForm.watch('liffId');
                           const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return (!isLoggedIn || !hasLiffId)
+                          return !hasLiffId
                             ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                             : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
                         })()}`}
@@ -1118,8 +1277,8 @@ export default function Home() {
                           const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
                           const liffIdFromForm = liffIdForm.watch('liffId');
                           const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return (!isLoggedIn || !hasLiffId) ? (
-                            <span>準備中... (LINEログインしてください)</span>
+                          return !hasLiffId ? (
+                            <span>準備中... (LIFF IDを入力してください)</span>
                           ) : (
                             <span>準備完了！　はじめる</span>
                           );
@@ -1156,17 +1315,17 @@ export default function Home() {
                 </button>
               )}
             </div>
-            {notifyEnabled && (
-              <div className="px-2">
-                {isTab === "secret" ? (
-                  <button className="rounded-full h-5 w-5 bg-primary" />
-                ) : (
-                  <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  </button>
-                )}
-              </div>
-            )}
+            {/* {notifyEnabled && ( */}
+            <div className="px-2">
+              {isTab === "secret" ? (
+                <button className="rounded-full h-5 w-5 bg-primary" />
+              ) : (
+                <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
+                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                </button>
+              )}
+            </div>
+            {/* )} */}
             <div className="px-2">
               {isTab === "howto" ? (
                 <button className="rounded-full h-5 w-5 bg-primary" />

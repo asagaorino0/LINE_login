@@ -46,8 +46,18 @@ export async function POST(req: NextRequest) {
 
     // ← ここを await にする
     const cookieStore = await cookies();
-    const aid = cookieStore.get("uid")?.value ?? null;
-    if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
+    let aid = cookieStore.get("uid")?.value ?? null;
+
+    // notify=0 の場合は匿名作成を許可、notify=1 の場合は管理者認証が必要
+    if (notify) {
+      // notify=1 の場合は管理者認証が必要
+      if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
+    } else {
+      // notify=0 の場合は匿名作成を許可
+      if (!aid) {
+        aid = 'anonymous';
+      }
+    }
 
     // basicId を正規化して @ 付け忘れに対応
     const normBasicId =
