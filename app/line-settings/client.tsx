@@ -23,6 +23,13 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
   const [enabled, setEnabled] = useState(false);
   const [lineUserId, setLineUserId] = useState<string>("");
   const [value, setValue] = useState<string>("");
+  const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
+  useEffect(() => {
+    fetch('/api/whoami', { credentials: 'include', cache: 'no-store' })
+      .then(r => r.json())
+      .then(setCookieInfo)
+      .catch(() => setCookieInfo(null));
+  }, []);
 
   // useEffect(() => {
   //   (async () => {
@@ -51,17 +58,38 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
       // }
 
       if (!ok || !liffManager.isLoggedIn()) return;
+      // 未ログイン or 初期化失敗時は必ずクリアして終了
+      if (!ok || !liffManager.isLoggedIn()) {
+        setLineUserId("");
+        return;
+      }
+
       const p = await liffManager.getProfile();
       if (!p) return;
 
-      setLineUserId(p.userId); // 外部ブラウザでも表示OK
-
-      // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
-      await fetch("/api/line-admin", {
+      // サーバで管理クッキーを確実にセットできた後に表示用UIDをセット
+      const resp = await fetch("/api/line-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lineUserId: p.userId }),
-      }).catch(() => { });
+      }).catch(() => null);
+      if (resp && resp.ok) {
+        setLineUserId(p.userId);
+        try {
+          const who = await fetch('/api/whoami', { credentials: 'include', cache: 'no-store' }).then(r => r.json());
+          setCookieInfo(who);
+
+        } catch { }
+      } else {
+        setLineUserId("");
+      }
+
+      // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
+      // await fetch("/api/line-admin", {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({ lineUserId: p.userId }),
+      // }).catch(() => { });
     })().catch(() => { });
   }, []);
 
@@ -225,7 +253,9 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
                   )}
                 >
                   {/* {liffManager.inClient() && liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}/   {lineUserId} */}
-                  {liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}
+                  {liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}/
+                  {liffManager.isLoggedIn() && !!lineUserId ? lineUserId : "（未ログイン）"}/
+                  {liffManager.isLoggedIn() && !!lineUserId && cookieInfo?.hasUid ? lineUserId : "（未ログイン）"}
                 </div>
                 <p className="text-xs text-gray-500"><strong>上記は今ログインしているIDです。</strong></p>
                 <p className="text-xs text-gray-500"><strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内の<strong>あなたのユーザーID</strong>と合致している必要があります。</p>
