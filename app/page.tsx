@@ -99,6 +99,12 @@ export default function Home() {
   const { toast, showToast, hideToast } = useToastNotification();
 
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
+  // useEffect(() => {
+  //   fetch('/api/whoami', { credentials: 'include', cache: 'no-store' })
+  //     .then(r => r.json())
+  //     .then(setCookieInfo)
+  //     .catch(() => setCookieInfo(null));
+  // }, []);
 
   // LIFF ID form setup
   const liffIdForm = useForm<LiffIdFormData>({
@@ -272,6 +278,11 @@ export default function Home() {
       .catch(() => setCookieInfo(null));
   }, [isLoggedIn, isAdmin]);
 
+  // whoami が未ログインなら画面上の UID をクリアしておく（他画面に備えて）
+  useEffect(() => {
+    if (!cookieInfo?.hasUid) setLineUserId('');
+  }, [cookieInfo?.hasUid]);
+
   // URLパラメータまたはサーバー設定からLIFF IDをフォームに自動入力
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
@@ -392,10 +403,20 @@ export default function Home() {
       setFormUrl(decodeURIComponent(formParam));
       setIsAutoMode(true);
     }
-
     if (notifyParam === "0") setNotifyEnabled(false);
-    if (notifyParam === "1") setNotifyEnabled(true);
+    if (notifyParam === "1") setNotifyEnabled(true); // ← 復帰直後にON
   }, [pathname, showToast]);
+  // サーバ側がuidを受理（= whoami.hasUid）したら、フラグでONにしてフラグを消す
+  useEffect(() => {
+    const want = sessionStorage.getItem('notifyAfterLogin');
+    if (want === '1' && cookieInfo?.hasUid) {
+      setNotifyEnabled(true);
+      sessionStorage.removeItem('notifyAfterLogin');
+      // ついでに管理タブを開くと自然
+      setIsAdmin(true);
+      setIsTab('admin');
+    }
+  }, [cookieInfo?.hasUid]);
 
   // タイトル同期
   useEffect(() => {
@@ -571,7 +592,9 @@ export default function Home() {
     if (liffManager.isLoggedIn()) {
       await liffManager.logout();
     }
-    await liffManager.login({ redirectUri: location.href });
+    const url = new URL(location.href);
+    url.searchParams.set('notify', '1');           // ← URLにも明示
+    await liffManager.login({ redirectUri: url.toString() });
   };
 
   const loginMutation = useMutation<LiffProfile, Error>({
@@ -1030,7 +1053,7 @@ export default function Home() {
                               checked={notifyEnabled}
                               onChange={(e) => {
                                 setNotifyEnabled(e.target.checked);
-                                // handleLineLogin(),
+                                handleLineLogin()
                                 // if (liffManager.isLoggedIn()) {
                                 //   await liffManager.logout();
                                 // }
@@ -1046,7 +1069,7 @@ export default function Home() {
                           {/* Conditional Notification Configuration */}
                           {notifyEnabled && (
                             <div className="mt-3 p-3 bg-white rounded border">
-                              {!cookieInfo?.hasUid || !isLoggedIn ? (
+                              {!cookieInfo?.hasUid ? (
                                 // Show login prompt when notifications enabled but not logged in or no LIFF login
                                 <div className="text-center">
                                   <p className="text-sm text-gray-600 mb-3">

@@ -57,7 +57,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
       //   return;
       // }
 
-      if (!ok || !liffManager.isLoggedIn()) return;
+      if (!ok || !liffManager.isLoggedIn()) { setLineUserId(''); return; }
       // 未ログイン or 初期化失敗時は必ずクリアして終了
       if (!ok || !liffManager.isLoggedIn()) {
         setLineUserId("");
@@ -65,7 +65,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
       }
 
       const p = await liffManager.getProfile();
-      if (!p) return;
+      if (!p) { setLineUserId(''); return; }
 
       // サーバで管理クッキーを確実にセットできた後に表示用UIDをセット
       const resp = await fetch("/api/line-admin", {
@@ -78,10 +78,9 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
         try {
           const who = await fetch('/api/whoami', { credentials: 'include', cache: 'no-store' }).then(r => r.json());
           setCookieInfo(who);
-
         } catch { }
       } else {
-        setLineUserId("");
+        setLineUserId('');
       }
 
       // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
