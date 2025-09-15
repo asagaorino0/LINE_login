@@ -192,7 +192,6 @@ export default function Home() {
       try {
         await ensureLiffReady();
         setIsInitialized(true);
-
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
@@ -203,21 +202,34 @@ export default function Home() {
               displayName: profile.displayName,
               pictureUrl: profile.pictureUrl || null,
             });
-
             // ログイン後に保存された画面状態を復元
             try {
+              console.log('🔄 [RESTORE] Checking sessionStorage for app state...');
+              console.log('🔄 [RESTORE] Current sessionStorage contents:', {
+                returnTo: sessionStorage.getItem('returnTo'),
+                appState: sessionStorage.getItem('appState')
+              });
               const savedState = sessionStorage.getItem('appState');
               if (savedState) {
-                const { isTab: savedTab, isAdmin: savedAdmin, isAutoMode: savedAutoMode } = JSON.parse(savedState);
+                const parsed = JSON.parse(savedState);
+                console.log('🔄 [RESTORE] Parsed app state:', parsed);
+                const { isTab: savedTab, isAdmin: savedAdmin, isAutoMode: savedAutoMode } = parsed;
+                console.log('🔄 [RESTORE] Restoring state:', {
+                  isTab: `${isTab} → ${savedTab}`,
+                  isAdmin: `${isAdmin} → ${savedAdmin}`,
+                  isAutoMode: `${isAutoMode} → ${savedAutoMode}`
+                });
                 setIsTab(savedTab);
                 setIsAdmin(savedAdmin);
                 setIsAutoMode(savedAutoMode);
                 sessionStorage.removeItem('appState'); // 復元後は削除
+                console.log('🔄 [RESTORE] State restoration completed');
+              } else {
+                console.log('🔄 [RESTORE] No saved state found in sessionStorage');
               }
             } catch (error) {
-              console.error('Failed to restore app state:', error);
+              console.error('🔄 [RESTORE] Failed to restore app state:', error);
             }
-
             // 初回ログイン時にLIFF IDを自動保存
             const sp = new URLSearchParams(location.search);
             const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
@@ -524,15 +536,20 @@ export default function Home() {
   const handleLineLogin = async () => {
     const ok = await ensureLiffReady();
     if (!ok) { setError("LIFF ID を URL/フォーム/ENV のいずれかで指定してください。"); return; }
-
     // ログイン前に現在の画面状態を保存
-    sessionStorage.setItem('returnTo', location.href);
-    sessionStorage.setItem('appState', JSON.stringify({
+    const appState = {
       isTab,
       isAdmin,
       isAutoMode
-    }));
-
+    };
+    console.log('🔄 [LOGIN] Saving app state to sessionStorage:', appState);
+    sessionStorage.setItem('returnTo', location.href);
+    sessionStorage.setItem('appState', JSON.stringify(appState));
+    // 保存後の確認
+    console.log('🔄 [LOGIN] sessionStorage after saving:', {
+      returnTo: sessionStorage.getItem('returnTo'),
+      appState: sessionStorage.getItem('appState')
+    });
     await liffManager.login({ redirectUri: location.href });
   };
 
