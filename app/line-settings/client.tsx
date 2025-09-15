@@ -13,7 +13,7 @@ import { useAuth } from "../lib/auth";
 import { cn } from "@/lib/utils";
 import '../Timeline.css'
 
-export default function LineSettingsClient({ onClick, login }: { onClick: () => void, login: () => void }) {
+export default function LineSettingsClient({ onClick, login }: { onClick: () => void, login?: () => void }) {
   const router = useRouter();
   const { user } = useAuth();
   const [lineSettings, setLineSettings] = useState({ channelName: "", channelSecret: "", channelAccessToken: "", liffId: "" });
@@ -42,14 +42,12 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
     didRunRef.current = true;
     (async () => {
       const ok = await liffManager.init();
-
-      // LINE外環境では完全にスキップ・UIDクリア
-      if (!liffManager.inClient()) {
-        setLineUserId("");
-        console.log("[LINE-SETTINGS] Not in LINE client, clearing UID");
-        return;
-      }
-
+      // // LINE外環境では完全にスキップ・UIDクリア
+      // if (!liffManager.inClient()) {
+      //   setLineUserId("");
+      //   console.log("[LINE-SETTINGS] Not in LINE client, clearing UID");
+      //   return;
+      //       }
       if (!ok || !liffManager.isLoggedIn()) return;
       const p = await liffManager.getProfile();
       if (!p) return;
@@ -224,7 +222,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
                     "overflow-x-auto whitespace-nowrap scrollbar-hide"/////横方向にスクロール可能、テキストを折り返さず一行で、バー非表示
                   )}
                 >
-                  {liffManager.inClient() && liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}
+                  {lineUserId}
                 </div>
                 <p className="text-xs text-gray-500"><strong>上記は今ログインしているIDです。</strong></p>
                 <p className="text-xs text-gray-500"><strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内の<strong>あなたのユーザーID</strong>と合致している必要があります。</p>
