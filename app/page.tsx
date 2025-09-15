@@ -215,28 +215,21 @@ export default function Home() {
             });
             // ログイン後に保存された画面状態を復元
             try {
-              console.log('🔄 [RESTORE] Checking sessionStorage for app state...');
-              console.log('🔄 [RESTORE] Current sessionStorage contents:', {
-                returnTo: sessionStorage.getItem('returnTo'),
-                appState: sessionStorage.getItem('appState')
-              });
+              const sp = new URLSearchParams(location.search);
+              const tabFromUrl = (sp.get('tab') || '').toLowerCase();
+              const returnTab = sessionStorage.getItem('returnTab');
               const savedState = sessionStorage.getItem('appState');
               if (savedState) {
                 const parsed = JSON.parse(savedState);
-                console.log('🔄 [RESTORE] Parsed app state:', parsed);
-                const { isTab: savedTab, isAdmin: savedAdmin, isAutoMode: savedAutoMode } = parsed;
-                console.log('🔄 [RESTORE] Restoring state:', {
-                  isTab: `${isTab} → ${savedTab}`,
-                  isAdmin: `${isAdmin} → ${savedAdmin}`,
-                  isAutoMode: `${isAutoMode} → ${savedAutoMode}`
-                });
-                setIsTab(savedTab);
-                setIsAdmin(savedAdmin);
-                setIsAutoMode(savedAutoMode);
+                // 🚩 URL または returnTab が admin のときは admin を強制
+                if (tabFromUrl === 'admin' || returnTab === 'admin') {
+                  parsed.isTab = 'admin';
+                  parsed.isAdmin = true;
+                }
+                setIsTab(parsed.isTab);
+                setIsAdmin(parsed.isAdmin);
+                setIsAutoMode(parsed.isAutoMode);
                 sessionStorage.removeItem('appState'); // 復元後は削除
-                console.log('🔄 [RESTORE] State restoration completed');
-              } else {
-                console.log('🔄 [RESTORE] No saved state found in sessionStorage');
               }
             } catch (error) {
               console.error('🔄 [RESTORE] Failed to restore app state:', error);
@@ -587,26 +580,21 @@ export default function Home() {
   const handleLineLogin = async () => {
     const ok = await ensureLiffReady();
     if (!ok) { setError("LIFF ID を URL/フォーム/ENV のいずれかで指定してください。"); return; }
-    // ログイン前に現在の画面状態を保存
+    // 🚩 復帰後は admin にしたいので、保存する appState を admin に固定
     const appState = {
-      isTab,
-      isAdmin,
-      isAutoMode
+      isTab: 'admin' as const,
+      isAdmin: true,
+      isAutoMode,         // これは現状維持で OK
     };
-    console.log('🔄 [LOGIN] Saving app state to sessionStorage:', appState);
     sessionStorage.setItem('returnTo', location.href);
     sessionStorage.setItem('appState', JSON.stringify(appState));
-    sessionStorage.setItem('returnTab', 'admin');
-    // 保存後の確認
-    console.log('🔄 [LOGIN] sessionStorage after saving:', {
-      returnTo: sessionStorage.getItem('returnTo'),
-      appState: sessionStorage.getItem('appState')
-    });
+    sessionStorage.setItem('returnTab', 'admin'); // 念のため
     if (liffManager.isLoggedIn()) {
       await liffManager.logout();
     }
+    // 返り先 URL にも明示
     const url = new URL(location.href);
-    url.searchParams.set('notify', '1');           // ← URLにも明示
+    url.searchParams.set('notify', '1');
     url.searchParams.set('tab', 'admin');
     await liffManager.login({ redirectUri: url.toString() });
   };
@@ -822,7 +810,7 @@ export default function Home() {
       params.set('usp', 'pp_url');
       params.set(userIdEntry, userId);
 
-      return `${baseUrl}?${params.toString()} `;
+      return `${baseUrl}?${params.toString()}`;
     } catch (e) {
       console.error('Failed to generate prefill URL:', e);
       return originalUrl;
@@ -839,7 +827,7 @@ export default function Home() {
       notify: notifyEnabled ? '1' : '0',
       v: String(Date.now()),
     });
-    return `${window.location.origin} /api/link - preview ? ${params.toString()} `;
+    return `${window.location.origin}/api/link-preview?${params.toString()}`;
   }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   /* ---- send + navigate ---- */
