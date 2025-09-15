@@ -224,7 +224,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
                     "overflow-x-auto whitespace-nowrap scrollbar-hide"/////横方向にスクロール可能、テキストを折り返さず一行で、バー非表示
                   )}
                 >
-                  {liffManager.inClient() && liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}/   {lineUserId}
+                  {/* {liffManager.inClient() && liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}/   {lineUserId} */}
                   {liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}
                 </div>
                 <p className="text-xs text-gray-500"><strong>上記は今ログインしているIDです。</strong></p>
