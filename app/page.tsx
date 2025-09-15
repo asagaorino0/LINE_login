@@ -811,15 +811,14 @@ export default function Home() {
       }
 
       // 返却用リンクを強化：entry と liff を必要なら付与
-      let enhancedLink: string = j.link;
-
+      const u = new URL(j.link, window.location.origin);
       if (overrideUserEntry.trim()) {
-        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'} entry = ${encodeURIComponent(ensureEntryFormat(overrideUserEntry))} `;
+        u.searchParams.set('entry', ensureEntryFormat(overrideUserEntry));
       }
       if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
-        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'} liff = ${encodeURIComponent(currentLiffId)} `;
+        u.searchParams.set('liff', currentLiffId);
       }
-
+      const enhancedLink = u.toString(); // 余計な空白が入らない
       setSignedLink(enhancedLink);
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
