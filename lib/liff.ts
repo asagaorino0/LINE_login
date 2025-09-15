@@ -135,7 +135,27 @@ export class LiffManager {
 
   isLoggedIn(): boolean {
     try {
+      // 実際のLINE環境でない場合はログイン状態を返さない
+      if (!this.isInLineEnvironment()) {////add
+        return false;
+      }
       return !!liffLib && liffLib.isLoggedIn();
+    } catch {
+      return false;
+    }
+  }
+
+  /** 実際のLINE環境かどうかを判定 */
+  private isInLineEnvironment(): boolean {///add
+    if (!isBrowser()) return false;
+    try {
+      // LINE環境の判定（複数の方法で確認）
+      const userAgent = navigator.userAgent.toLowerCase();
+      const isLineApp = userAgent.includes('line/');
+      const hasLiffContext = !!liffLib?.isInClient?.();
+      const isLiffReady = !!liffLib?.ready;
+
+      return isLineApp || hasLiffContext || isLiffReady;
     } catch {
       return false;
     }
@@ -168,6 +188,13 @@ export class LiffManager {
 
   async getProfile(): Promise<LiffProfile | null> {
     if (!this.isInitialized) return null;
+
+    // 実際のLINE環境でない場合はプロファイルを返さない
+    if (!this.isInLineEnvironment()) {////add
+      console.log("[LIFF] Not in LINE environment, profile access denied");
+      return null;
+    }
+
     try {
       const p = await liffLib.getProfile();
       if (!p) return null;
