@@ -97,15 +97,46 @@ export default function Home() {
   const [overrideUserEntry, setOverrideUserEntry] = useState<string>("");
 
   const { toast, showToast, hideToast } = useToastNotification();
-
+  const didRunRef = useRef(false);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
-  // useEffect(() => {
-  //   fetch('/api/whoami', { credentials: 'include', cache: 'no-store' })
-  //     .then(r => r.json())
-  //     .then(setCookieInfo)
-  //     .catch(() => setCookieInfo(null));
-  // }, []);
-
+  /////////////////////////////////////////////////////////////////////////
+  useEffect(() => {
+    fetch('/api/whoami', { credentials: 'include', cache: 'no-store' })
+      .then(r => r.json())
+      .then(setCookieInfo)
+      .catch(() => setCookieInfo(null));
+  }, []);
+  // ② LIFF ログイン済みなら /api/line-admin を呼んで admin/uid クッキーをサーバでセット
+  useEffect(() => {
+    if (didRunRef.current) return;
+    didRunRef.current = true;
+    (async () => {
+      const ok = await liffManager.init();
+      if (!ok || !liffManager.isLoggedIn()) { setLineUserId(''); return; }
+      // 未ログイン or 初期化失敗時は必ずクリアして終了
+      if (!ok || !liffManager.isLoggedIn()) {
+        setLineUserId("");
+        return;
+      }
+      const p = await liffManager.getProfile();
+      if (!p) { setLineUserId(''); return; }
+      const resp = await fetch("/api/line-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineUserId: p.userId }),
+      }).catch(() => null);
+      if (resp && resp.ok) {
+        setLineUserId(p.userId);
+        try {
+          const who = await fetch('/api/whoami', { credentials: 'include', cache: 'no-store' }).then(r => r.json());
+          setCookieInfo(who);
+        } catch { }
+      } else {
+        setLineUserId('');
+      }
+    })().catch(() => { });
+  }, []);
+  /////////////////////////////////////////////////////////////////////////
   // LIFF ID form setup
   const liffIdForm = useForm<LiffIdFormData>({
     resolver: zodResolver(liffIdSchema),
@@ -1351,14 +1382,14 @@ export default function Home() {
                           return !hasLiffId;
                         })()}
                         className={`w - full mt - 2 ${(() => {
-                            const sp = new URLSearchParams(window.location.search);
-                            const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                            const liffIdFromForm = liffIdForm.watch('liffId');
-                            const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                            return !hasLiffId
-                              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                              : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
-                          })()
+                          const sp = new URLSearchParams(window.location.search);
+                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                          const liffIdFromForm = liffIdForm.watch('liffId');
+                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                          return !hasLiffId
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                            : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
+                        })()
                           } `}
                         data-testid="button-start-admin"
                       >
