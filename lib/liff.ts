@@ -100,9 +100,22 @@ export class LiffManager {
       try { const v = localStorage.getItem(LS_KEY); return v && VALID.test(v) ? v : null; } catch { return null; }
     })() : null;
     const fromUrl = this.liffIdFromUrl();
-    const fromEnv = (process.env.NEXT_PUBLIC_LIFF_ID && VALID.test(process.env.NEXT_PUBLIC_LIFF_ID))
-      ? process.env.NEXT_PUBLIC_LIFF_ID!
-      : "";
+    // 環境変数からの自動初期化はLINE環境でのみ許可
+    const fromEnv = (() => {
+      if (!process.env.NEXT_PUBLIC_LIFF_ID || !VALID.test(process.env.NEXT_PUBLIC_LIFF_ID)) {
+        return "";
+      }
+      // LINE UserAgentの確認（初期化前なのでliff.isInClientは使えない）
+      if (isBrowser()) {
+        const userAgent = navigator.userAgent.toLowerCase();
+        const isLineUA = userAgent.includes('line/');
+        if (!isLineUA) {
+          console.log("[LIFF] Environment variable init blocked outside LINE app");
+          return "";
+        }
+      }
+      return process.env.NEXT_PUBLIC_LIFF_ID!;
+    })();
 
     const resolved =
       fromArg ||
@@ -123,6 +136,20 @@ export class LiffManager {
 
     try {
       await liffLib.init({ liffId: resolved });
+
+      // Safe-Init: 初期化後にLINE環境チェック
+      if (!liffLib.isInClient?.()) {
+        console.log("[LIFF] Safe-Init: Not in LINE client, clearing state");
+        try { liffLib.logout?.(); } catch { /* ignore */ }
+        this.isInitialized = false;
+        this.currentLiffId = null;
+        // localStorage もクリア
+        if (isBrowser()) {
+          try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
+        }
+        return false;
+      }
+
       this.isInitialized = true;
       this.setLiffId(resolved); // localStorage にも保存
       return true;
@@ -135,30 +162,28 @@ export class LiffManager {
 
   isLoggedIn(): boolean {
     try {
-      // 実際のLINE環境でない場合はログイン状態を返さない
-      if (!this.isInLineEnvironment()) {////add
+      // 厳密なLINE環境チェック - LINE外では絶対にfalse
+      if (!this.isInLineEnvironment()) {
         return false;
       }
-      return !!liffLib && liffLib.isLoggedIn();
+      return !!liffLib && !!liffLib.isLoggedIn?.();
     } catch {
       return false;
     }
   }
 
-  /** 実際のLINE環境かどうかを判定 */
-  private isInLineEnvironment(): boolean {///add
+  /** 実際のLINE環境かどうかを判定（厳密チェック） */
+  private isInLineEnvironment(): boolean {
     if (!isBrowser()) return false;
-    try {
-      // LINE環境の判定（複数の方法で確認）
-      const userAgent = navigator.userAgent.toLowerCase();
-      const isLineApp = userAgent.includes('line/');
-      const hasLiffContext = !!liffLib?.isInClient?.();
-      const isLiffReady = !!liffLib?.ready;
+    if (!liffLib) return false;
 
-      return isLineApp || hasLiffContext || isLiffReady;
-    } catch {
-      return false;
-    }
+    // LIFFの isInClient() のみを使用（最も厳密で信頼できる判定）
+    return Boolean(liffLib?.isInClient?.());
+  }
+
+  /** 公開メソッド: LINEクライアント内かどうかをチェック */
+  inClient(): boolean {
+    return this.isInLineEnvironment();
   }
 
   /**

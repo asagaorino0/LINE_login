@@ -192,6 +192,15 @@ export default function Home() {
       try {
         await ensureLiffReady();
         setIsInitialized(true);
+
+        // LINE外環境では完全にUID関連処理をスキップ
+        if (!liffManager.inClient()) {
+          setLineUserId("");
+          setUserProfile(null);
+          setIsLoggedIn(false);
+          return;
+        }
+
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
@@ -568,7 +577,10 @@ export default function Home() {
     },
     onSuccess: (profile) => {
       setUserProfile(profile);
-      setLineUserId(profile.userId);
+      // LINE環境でのみUIDを設定
+      if (liffManager.inClient()) {
+        setLineUserId(profile.userId);
+      }
       setIsLoggedIn(true);
       setError(null);
     },
@@ -592,8 +604,11 @@ export default function Home() {
           setUserProfile(profile);
           setIsLoggedIn(true);
           await saveUserToBackend(profile);
+          // LINE環境でのみUIDを設定
+          if (liffManager.inClient()) {
+            setLineUserId(profile.userId);
+          }
         }
-        setLineUserId((await liffManager.getProfile())!.userId);
       }
     } catch (e) {
       console.error('再ログイン処理に失敗:', e);
