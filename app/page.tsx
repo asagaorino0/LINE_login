@@ -1004,12 +1004,12 @@ export default function Home() {
                               id="notify"
                               type="checkbox"
                               checked={notifyEnabled}
-                              onChange={async (e) => {
+                              onChange={(e) => {
                                 setNotifyEnabled(e.target.checked);
                                 // handleLineLogin(),
-                                if (liffManager.isLoggedIn()) {
-                                  await liffManager.logout();
-                                }
+                                // if (liffManager.isLoggedIn()) {
+                                //   await liffManager.logout();
+                                // }
                               }}
                               className="h-4 w-4 text-green-600 border-gray-300 rounded"
                               data-testid="checkbox-enable-notifications"
@@ -1022,8 +1022,8 @@ export default function Home() {
                           {/* Conditional Notification Configuration */}
                           {notifyEnabled && (
                             <div className="mt-3 p-3 bg-white rounded border">
-                              {!cookieInfo?.hasUid ? (
-                                // Show login prompt when notifications enabled but not logged in
+                              {!cookieInfo?.hasUid || !isLoggedIn ? (
+                                // Show login prompt when notifications enabled but not logged in or no LIFF login
                                 <div className="text-center">
                                   <p className="text-sm text-gray-600 mb-3">
                                     通知機能を使用するにはLINEログインが必要です
