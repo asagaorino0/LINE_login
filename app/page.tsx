@@ -193,19 +193,14 @@ export default function Home() {
         await ensureLiffReady();
         setIsInitialized(true);
 
-        // LINE外環境では完全にUID関連処理をスキップ
-        if (!liffManager.inClient()) {
-          setLineUserId("");
-          setUserProfile(null);
-          setIsLoggedIn(false);
-          return;
-        }
-
+        // 外部ブラウザでもログインは有効。inClient の有無で“やること”だけ分岐
+        const inClient = liffManager.inClient();
         if (liffManager.isLoggedIn()) {
           const profile = await liffManager.getProfile();
           if (profile) {
             setUserProfile(profile);
             setIsLoggedIn(true);
+            if (inClient) setLineUserId(profile.userId);       // UIDの「表示」だけクライアント内に限定
             await apiRequest('POST', '/api/line-users', {
               lineUserId: profile.userId,
               displayName: profile.displayName,

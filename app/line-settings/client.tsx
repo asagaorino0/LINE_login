@@ -43,18 +43,18 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
     (async () => {
       const ok = await liffManager.init();
 
-      // LINE外環境では完全にスキップ・UIDクリア
-      if (!liffManager.inClient()) {
-        setLineUserId("");
-        console.log("[LINE-SETTINGS] Not in LINE client, clearing UID");
-        return;
-      }
+      // // LINE外環境では完全にスキップ・UIDクリア
+      // if (!liffManager.inClient()) {
+      //   setLineUserId("");
+      //   console.log("[LINE-SETTINGS] Not in LINE client, clearing UID");
+      //   return;
+      // }
 
       if (!ok || !liffManager.isLoggedIn()) return;
       const p = await liffManager.getProfile();
       if (!p) return;
 
-      setLineUserId(p.userId); // 表示用に残すだけ（保存には使わない）
+      setLineUserId(p.userId); // 外部ブラウザでも表示OK
 
       // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
       await fetch("/api/line-admin", {
@@ -225,6 +225,7 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
                   )}
                 >
                   {liffManager.inClient() && liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}/   {lineUserId}
+                  {liffManager.isLoggedIn() && lineUserId ? lineUserId : "（未ログイン）"}
                 </div>
                 <p className="text-xs text-gray-500"><strong>上記は今ログインしているIDです。</strong></p>
                 <p className="text-xs text-gray-500"><strong>チャンネル基本設定</strong> → <strong>基本情報</strong> 内の<strong>あなたのユーザーID</strong>と合致している必要があります。</p>
