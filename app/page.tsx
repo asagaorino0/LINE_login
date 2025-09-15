@@ -185,7 +185,14 @@ export default function Home() {
     const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
     return await liffManager.init({ liffId: fromForm || fromUrl || fromServer || fromEnv });
   };
+  // このセッション中に /api/line-admin 成功したか（= 本人確認が完了したか）
+  const [adminReady, setAdminReady] = useState(false);
 
+  // ページ入場時は毎回 false に（画面更新で過去セッションを引きずらない）
+  useEffect(() => {
+    sessionStorage.removeItem('adminReady');
+    setAdminReady(false);
+  }, []);
   // 初回起動
   useEffect(() => {
     (async () => {
@@ -300,6 +307,10 @@ export default function Home() {
     mutationFn: async (vars) => {
       await apiRequest("POST", "/api/line-admin", vars);
     },
+    onSuccess: () => {
+      sessionStorage.setItem('adminReady', '1');
+      setAdminReady(true);
+    },
   });
 
   useEffect(() => {
@@ -317,9 +328,12 @@ export default function Home() {
 
   // アカウント一覧（admin タブ時）
   useEffect(() => {
-    if (isTab === "top") return;
-    if (!userProfile?.userId) return;
-    if (!cookieInfo?.hasUid) return;
+    if (isTab === "top" || !adminReady) {
+      // 認証未完了時は一覧を空にしておく（他人のが見えないように）
+      setAccounts([]);
+      setSelectedBasicId("");
+      return;
+    }
     let aborted = false;
     (async () => {
       try {
@@ -344,7 +358,7 @@ export default function Home() {
     })();
 
     return () => { aborted = true; };
-  }, [isAdmin, userProfile?.userId, cookieInfo?.hasUid, isTab]);
+  }, [isTab, adminReady]);
 
   // URL パラメータ→状態
   useEffect(() => {
