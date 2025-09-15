@@ -379,6 +379,7 @@ export default function Home() {
     const lid = sp.get("lid");
     const formParam = sp.get("form");
     const notifyParam = sp.get("notify");
+    const tabParam = (sp.get("tab") || "").toLowerCase();
     const entryParam = sp.get("entry");
 
     if (entryParam) setOverrideUserEntry(ensureEntryFormat(entryParam));
@@ -404,19 +405,36 @@ export default function Home() {
       setIsAutoMode(true);
     }
     if (notifyParam === "0") setNotifyEnabled(false);
-    if (notifyParam === "1") setNotifyEnabled(true); // ← 復帰直後にON
+    if (notifyParam === "1") setNotifyEnabled(true);
+    // URLに tab=admin があれば admin タブへ
+    if (tabParam === "admin") {
+      setIsAdmin(true);
+      setIsTab("admin");
+      // URLをきれいにする
+      sp.delete("tab");
+      const qs = sp.toString();
+      const clean = `${location.pathname}${qs ? "?" + qs : ""}${location.hash}`;
+      window.history.replaceState(null, "", clean);
+    }
   }, [pathname, showToast]);
   // サーバ側がuidを受理（= whoami.hasUid）したら、フラグでONにしてフラグを消す
   useEffect(() => {
-    const want = sessionStorage.getItem('notifyAfterLogin');
-    if (want === '1' && cookieInfo?.hasUid) {
-      setNotifyEnabled(true);
-      sessionStorage.removeItem('notifyAfterLogin');
-      // ついでに管理タブを開くと自然
-      setIsAdmin(true);
-      setIsTab('admin');
+    if (pathname === '/open') return; // /open は触らない
+    const wantNotify = sessionStorage.getItem('notifyAfterLogin');
+    const returnTab = sessionStorage.getItem('returnTab');
+    if (cookieInfo?.hasUid) {
+      if (wantNotify === '1') {
+        setNotifyEnabled(true);
+        sessionStorage.removeItem('notifyAfterLogin');
+      }
+      if (returnTab === 'admin') {
+        setIsAdmin(true);
+        setIsTab('admin');
+        sessionStorage.removeItem('returnTab');
+      }
     }
-  }, [cookieInfo?.hasUid]);
+  }, [cookieInfo?.hasUid, pathname]);
+
 
   // タイトル同期
   useEffect(() => {
@@ -584,6 +602,7 @@ export default function Home() {
     console.log('🔄 [LOGIN] Saving app state to sessionStorage:', appState);
     sessionStorage.setItem('returnTo', location.href);
     sessionStorage.setItem('appState', JSON.stringify(appState));
+    sessionStorage.setItem('returnTab', 'admin');
     // 保存後の確認
     console.log('🔄 [LOGIN] sessionStorage after saving:', {
       returnTo: sessionStorage.getItem('returnTo'),
@@ -594,6 +613,7 @@ export default function Home() {
     }
     const url = new URL(location.href);
     url.searchParams.set('notify', '1');           // ← URLにも明示
+    url.searchParams.set('tab', 'admin');
     await liffManager.login({ redirectUri: url.toString() });
   };
 
@@ -763,10 +783,10 @@ export default function Home() {
       let enhancedLink: string = j.link;
 
       if (overrideUserEntry.trim()) {
-        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}entry=${encodeURIComponent(ensureEntryFormat(overrideUserEntry))}`;
+        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'} entry = ${encodeURIComponent(ensureEntryFormat(overrideUserEntry))} `;
       }
       if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
-        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'}liff=${encodeURIComponent(currentLiffId)}`;
+        enhancedLink += `${enhancedLink.includes('?') ? '&' : '?'} liff = ${encodeURIComponent(currentLiffId)} `;
       }
 
       setSignedLink(enhancedLink);
@@ -809,7 +829,7 @@ export default function Home() {
       params.set('usp', 'pp_url');
       params.set(userIdEntry, userId);
 
-      return `${baseUrl}?${params.toString()}`;
+      return `${baseUrl}?${params.toString()} `;
     } catch (e) {
       console.error('Failed to generate prefill URL:', e);
       return originalUrl;
@@ -826,7 +846,7 @@ export default function Home() {
       notify: notifyEnabled ? '1' : '0',
       v: String(Date.now()),
     });
-    return `${window.location.origin}/api/link-preview?${params.toString()}`;
+    return `${window.location.origin} /api/link - preview ? ${params.toString()} `;
   }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   /* ---- send + navigate ---- */
@@ -874,9 +894,9 @@ export default function Home() {
           if (!r.ok) {
             try {
               const j = JSON.parse(t);
-              showToast(`送信失敗: ${j?.code ?? r.status}`, "error");
+              showToast(`送信失敗: ${j?.code ?? r.status} `, "error");
             } catch {
-              showToast(`送信失敗: ${r.status}`, "error");
+              showToast(`送信失敗: ${r.status} `, "error");
             }
           }
         }
@@ -1025,7 +1045,7 @@ export default function Home() {
                                     }
                                     const u = ensureEntryFormat(overrideUserEntry || detectedEntries!.userId!);
                                     setOverrideUserEntry(u);
-                                    showToast(`entryID を固定: ${u}`, 'success');
+                                    showToast(`entryID を固定: ${u} `, 'success');
                                   }}
                                   variant="secondary"
                                   size="sm"
@@ -1236,7 +1256,7 @@ export default function Home() {
                         </div>
                       </div>
                       {/* Debug: ユーザー情報表示 */}
-                      {/* {`${lineUserId}`} */}
+                      {/* {`${ lineUserId } `} */}
                       {/* <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
                         ログイン
                       </Button> */}
@@ -1261,7 +1281,7 @@ export default function Home() {
                             <span style={{
                               backgroundColor: '#06c755',
                               color: '#ffffff'
-                            }}>{`</>`}</span> <span >LINEログイン から取得</span>
+                            }}>{`</> `}</span> <span >LINEログイン から取得</span>
                           </span></p>
                         <Form {...liffIdForm}>
                           <form onSubmit={liffIdForm.handleSubmit(onLiffIdSubmit)} className="space-y-3">
@@ -1330,15 +1350,16 @@ export default function Home() {
                           const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
                           return !hasLiffId;
                         })()}
-                        className={`w-full mt-2 ${(() => {
-                          const sp = new URLSearchParams(window.location.search);
-                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                          const liffIdFromForm = liffIdForm.watch('liffId');
-                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return !hasLiffId
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                            : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
-                        })()}`}
+                        className={`w - full mt - 2 ${(() => {
+                            const sp = new URLSearchParams(window.location.search);
+                            const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                            const liffIdFromForm = liffIdForm.watch('liffId');
+                            const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                            return !hasLiffId
+                              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                              : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
+                          })()
+                          } `}
                         data-testid="button-start-admin"
                       >
                         {(() => {
