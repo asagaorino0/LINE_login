@@ -30,44 +30,20 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
       .then(setCookieInfo)
       .catch(() => setCookieInfo(null));
   }, []);
-
-  // useEffect(() => {
-  //   (async () => {
-  //     try {
-  //       const r = await fetch("/api/line-secrets", { cache: "no-store" });
-  //       if (r.ok) {
-  //         const j = await r.json();
-  //         if (j?.exists) setFingerprints(j.fingerprints ?? null);
-  //       }
-  //     } catch { }
-  //   })();
-  // }, []);
-
   // ② LIFF ログイン済みなら /api/line-admin を呼んで admin/uid クッキーをサーバでセット
   useEffect(() => {
     if (didRunRef.current) return;
     didRunRef.current = true;
     (async () => {
       const ok = await liffManager.init();
-
-      // // LINE外環境では完全にスキップ・UIDクリア
-      // if (!liffManager.inClient()) {
-      //   setLineUserId("");
-      //   console.log("[LINE-SETTINGS] Not in LINE client, clearing UID");
-      //   return;
-      // }
-
       if (!ok || !liffManager.isLoggedIn()) { setLineUserId(''); return; }
       // 未ログイン or 初期化失敗時は必ずクリアして終了
       if (!ok || !liffManager.isLoggedIn()) {
         setLineUserId("");
         return;
       }
-
       const p = await liffManager.getProfile();
       if (!p) { setLineUserId(''); return; }
-
-      // サーバで管理クッキーを確実にセットできた後に表示用UIDをセット
       const resp = await fetch("/api/line-admin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -82,13 +58,6 @@ export default function LineSettingsClient({ onClick, login }: { onClick: () => 
       } else {
         setLineUserId('');
       }
-
-      // ★ここ！ uid=LINEのuserId をクッキーにセット（サーバ側で）
-      // await fetch("/api/line-admin", {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify({ lineUserId: p.userId }),
-      // }).catch(() => { });
     })().catch(() => { });
   }, []);
 
