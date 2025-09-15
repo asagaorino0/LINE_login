@@ -582,7 +582,6 @@ export default function Home() {
     try {
       const ready = await ensureLiffReady();
       if (!ready) return;
-
       if (liffManager.isLoggedIn()) {
         await liffManager.logout();
       }
@@ -1005,9 +1004,12 @@ export default function Home() {
                               id="notify"
                               type="checkbox"
                               checked={notifyEnabled}
-                              onChange={(e) => {
+                              onChange={async (e) => {
                                 setNotifyEnabled(e.target.checked);
                                 // handleLineLogin(),
+                                if (liffManager.isLoggedIn()) {
+                                  await liffManager.logout();
+                                }
                               }}
                               className="h-4 w-4 text-green-600 border-gray-300 rounded"
                               data-testid="checkbox-enable-notifications"
