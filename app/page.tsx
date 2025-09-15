@@ -1308,7 +1308,7 @@ export default function Home() {
             </>
           )}
           {isTab === 'secret' && (
-            <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true) }} login={relogin} />
+            <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true) }} login={handleLineLogin} />
           )}
           {isTab === 'howto' && (
             <Howto onClick={() => { setIsTab('admin'), setIsAdmin(true) }} />
