@@ -550,6 +550,9 @@ export default function Home() {
       returnTo: sessionStorage.getItem('returnTo'),
       appState: sessionStorage.getItem('appState')
     });
+    if (liffManager.isLoggedIn()) {
+      await liffManager.logout();
+    }
     await liffManager.login({ redirectUri: location.href });
   };
 
