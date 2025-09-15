@@ -73,7 +73,7 @@ export default function Home() {
   const [userProfile, setUserProfile] = useState<LiffProfile | null>(null);
 
   const [formUrl, setFormUrl] = useState('');
-  const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('top');
+  const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('admin');
   const [isAutoMode, setIsAutoMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
