@@ -1028,12 +1028,12 @@ export default function Home() {
                               id="notify"
                               type="checkbox"
                               checked={notifyEnabled}
-                              onChange={async (e) => {
+                              onChange={(e) => {
                                 setNotifyEnabled(e.target.checked);
                                 // handleLineLogin(),
-                                if (liffManager.isLoggedIn()) {
-                                  await liffManager.logout();
-                                }
+                                // if (liffManager.isLoggedIn()) {
+                                //   await liffManager.logout();
+                                // }
                               }}
                               className="h-4 w-4 text-green-600 border-gray-300 rounded"
                               data-testid="checkbox-enable-notifications"
