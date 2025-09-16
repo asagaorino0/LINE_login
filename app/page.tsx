@@ -908,7 +908,10 @@ export default function Home() {
       </div>
     );
   }
-
+  const sp = new URLSearchParams(window.location.search);
+  const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+  const liffIdFromForm = liffIdForm.watch('liffId');
+  const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
   return (
     <>
       <HomeClient />
@@ -967,196 +970,260 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-gray-900 mb-2">管理者モード</h3>
                   </div>
 
-                  {isAdmin && isTab === 'admin' && (
+                  {isTab === 'admin' && (
                     <div className="space-y-4">
-                      <div>
-                        <Input
-                          type="url"
-                          value={formUrl}
-                          onChange={(e) => {
-                            setFormUrl(e.target.value);
-                            setDetectedEntries(null);
-                            setLastDetectionResult(null);
-                            setSignedLink("");
-                            setDetectionError(null);
-                          }}
-                          placeholder="ここにGoogleフォームのURLを入力"
-                          className="pr-5 text-gray-500 text-sm bg-blue-200"
-                        />
+                      {/* LIFF ID 設定フォーム */}
+                      <div className="p-3 bg-blue-50 rounded-lg mb-4">
+                        <h5 className="text-sm font-semibold text-gray-800 mb-1">LIFF ID設定</h5>
+                        <p className="text-sm text-gray-700 mb-3">
+                          LINE連携に必要なLIFF IDを設定してください
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                            LINE Developers Console
+                          </a> にログイン
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="M7eMe">
+                            <span style={{
+                              backgroundColor: '#06c755',
+                              color: '#ffffff',
+                              marginRight: 2
+                            }}>{`</> `}</span> <span > <strong> LINEログイン →　 </strong></span>
+                          </span>
+                          <span className='text-gray-400'> チャネル基本設定 | </span>
+                          <span className='text-gray-400'> LINEログイン設定 | </span>
+                          <strong
+                            style={{
+                              textDecoration: "underline",
+                              textDecorationColor: "#06c755",
+                              textDecorationThickness: "5px", // 下線の太さを指定
+                            }}
+                          >
+                            LIFF
+                          </strong>
 
-                        {formUrl ? (
-                          <div className="mt-3 p-3 rounded border bg-white">
-                            <div className="text-xs text-gray-700 mb-2 font-semibold">ENTRY ID 検出結果</div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-xs text-gray-600 mb-1">検出された欄（読み取り専用）</label>
-                                <Input
-                                  value={detectedEntries?.userId ?? ''}
-                                  readOnly
-                                  placeholder="未検出"
-                                  className="text-xs"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-600 mb-1">entryID を手入力（最優先）</label>
-                                <Input
-                                  value={overrideUserEntry}
-                                  onChange={(e) => setOverrideUserEntry(e.target.value)}
-                                  placeholder="例）entry.123456789 または 123456789"
-                                  className="text-xs"
-                                />
-                              </div>
-                            </div>
-
-                            <div className="mt-2 flex items-center justify-between">
-                              <div className="text-xs">
-                                {isDetecting ? <span className="text-blue-600">検出中...</span> :
-                                  detectionError ? <span className="text-red-600">検出エラー: {detectionError}</span> :
-                                    detectedEntries?.userId ? <span className="text-green-700">検出OK</span> :
-                                      <span className="text-gray-600">未検出（手入力をご利用ください）</span>
-                                }
-                              </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  onClick={() => {
-                                    if (!overrideUserEntry && !detectedEntries?.userId) {
-                                      showToast('entryID を入力してください', 'error');
-                                      return;
-                                    }
-                                    const u = ensureEntryFormat(overrideUserEntry || detectedEntries!.userId!);
-                                    setOverrideUserEntry(u);
-                                    showToast(`entryID を固定: ${u} `, 'success');
-                                  }}
-                                  variant="secondary"
-                                  size="sm"
-                                  className="text-xs"
-                                >
-                                  この entryID を使う
-                                </Button>
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-gray-500 mt-2">
-                              ※ 手入力がある場合は、生成URL・LINE送信ともに<strong>手入力を最優先</strong>します。
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {/* Notification Settings Section */}
-                        <div className="my-4 p-4 bg-gray-50 rounded-lg border">
-                          <h4 className="text-sm font-semibold text-gray-800 mb-3">通知設定</h4>
-
-                          {/* Notification Enable Checkbox */}
-                          <div className="flex items-center space-x-3 mb-3">
-                            <input
-                              id="notify"
-                              type="checkbox"
-                              checked={notifyEnabled}
-                              onChange={(e) =>
-                                setNotifyEnabled(e.target.checked)
-                                // handleLineLogin()
-                                // if (liffManager.isLoggedIn()) {
-                                //   await liffManager.logout();
-                                // }
-                              }
-                              className="h-4 w-4 text-green-600 border-gray-300 rounded"
-                              data-testid="checkbox-enable-notifications"
+                          <span className='text-gray-400'>  | 権限設定  </span>
+                          <span > 　から取得</span>
+                        </p>
+                        <p className="text-sm text-gray-600">無ければ追加</p>
+                        <Form {...liffIdForm}>
+                          <form onSubmit={liffIdForm.handleSubmit(onLiffIdSubmit)} className="space-y-3">
+                            <FormField
+                              control={liffIdForm.control}
+                              name="liffId"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs font-medium text-gray-700">
+                                    LIFF ID
+                                  </FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      placeholder="例: 1234567890-abcdefgh"
+                                      className="text-sm"
+                                      data-testid="input-liff-id"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage className="text-xs" />
+                                </FormItem>
+                              )}
                             />
-                            <label htmlFor="notify" className="text-sm text-gray-700 font-medium">
-                              フォーム回答通知を公式LINEで受け取る
-                            </label>
-                          </div>
+                          </form>
+                        </Form>
+                      </div>
+                      {hasLiffId &&
+                        <>
+                          <div>
+                            <Input
+                              type="url"
+                              value={formUrl}
+                              onChange={(e) => {
+                                setFormUrl(e.target.value);
+                                setDetectedEntries(null);
+                                setLastDetectionResult(null);
+                                setSignedLink("");
+                                setDetectionError(null);
+                              }}
+                              placeholder="ここにGoogleフォームのURLを入力"
+                              className="pr-5 text-gray-500 text-sm bg-blue-200"
+                            />
 
-                          {/* Conditional Notification Configuration */}
-                          {notifyEnabled && (
-                            <div className="mt-3 p-3 bg-white rounded border">
-                              {!cookieInfo?.hasUid ? (
-                                // Show login prompt when notifications enabled but not logged in or no LIFF login
-                                <div className="text-center">
-                                  <p className="text-sm text-gray-600 mb-3">
-                                    通知機能を使用するにはLINEログインが必要です
-                                  </p>
-                                  <Button
-                                    onClick={() => {
-                                      // ログイン後にチャネル設定画面に戻るよう状態を事前保存
-                                      sessionStorage.setItem('appState', JSON.stringify({
-                                        isTab: 'secret',
-                                        isAdmin: false,
-                                        isAutoMode: false
-                                      }));
-                                      handleLineLogin();
-                                    }}
-                                    disabled={loginMutation.isPending}
-                                    className="bg-[#00be00] hover:bg-[#00a000] text-white"
-                                    data-testid="button-login-for-notifications"
-                                  >
-                                    {loginMutation.isPending ? '認証中...' : 'LINEログインして通知を設定'}
-                                  </Button>
+                            {formUrl ? (
+                              <div className="mt-3 p-3 rounded border bg-white">
+                                <div className="text-xs text-gray-700 mb-2 font-semibold">ENTRY ID 検出結果</div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">検出された欄（読み取り専用）</label>
+                                    <Input
+                                      value={detectedEntries?.userId ?? ''}
+                                      readOnly
+                                      placeholder="未検出"
+                                      className="text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs text-gray-600 mb-1">entryID を手入力（最優先）</label>
+                                    <Input
+                                      value={overrideUserEntry}
+                                      onChange={(e) => setOverrideUserEntry(e.target.value)}
+                                      placeholder="例）entry.123456789 または 123456789"
+                                      className="text-xs"
+                                    />
+                                  </div>
                                 </div>
-                              ) : (
-                                // Show notification configuration when logged in
-                                <div>
-                                  <label className="block text-sm text-gray-700 mb-2">受信用公式LINE</label>
-                                  <select
-                                    className="w-full p-2 border border-gray-300 rounded text-sm"
-                                    value={selectedBasicId}
-                                    onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
-                                    data-testid="select-basic-id"
-                                  >
-                                    {!accounts.length && <option value="">（未登録）</option>}
-                                    {accounts.map((a) => {
-                                      const text = (a.channelName || a.basicId);
-                                      const fontSize = text.length > 20 ? "12px" : "14px";
-                                      return (
-                                        <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
-                                          {text}
-                                        </option>
-                                      );
-                                    })}
-                                  </select>
-                                  {!accounts.length && (
-                                    <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
-                                      <p className="text-xs text-amber-700">
-                                        公式LINEアカウントが未登録です。設定画面で公式LINEを登録してください。
+
+                                <div className="mt-2 flex items-center justify-between">
+                                  <div className="text-xs">
+                                    {isDetecting ? <span className="text-blue-600">検出中...</span> :
+                                      detectionError ? <span className="text-red-600">検出エラー: {detectionError}</span> :
+                                        detectedEntries?.userId ? <span className="text-green-700">検出OK</span> :
+                                          <span className="text-gray-600">未検出（手入力をご利用ください）</span>
+                                    }
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => {
+                                        if (!overrideUserEntry && !detectedEntries?.userId) {
+                                          showToast('entryID を入力してください', 'error');
+                                          return;
+                                        }
+                                        const u = ensureEntryFormat(overrideUserEntry || detectedEntries!.userId!);
+                                        setOverrideUserEntry(u);
+                                        showToast(`entryID を固定: ${u} `, 'success');
+                                      }}
+                                      variant="secondary"
+                                      size="sm"
+                                      className="text-xs"
+                                    >
+                                      この entryID を使う
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="text-[11px] text-gray-500 mt-2">
+                                  ※ 手入力がある場合は、生成URL・LINE送信ともに<strong>手入力を最優先</strong>します。
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {/* Notification Settings Section */}
+                            <div className="my-4 p-4 bg-gray-50 rounded-lg border">
+                              <h4 className="text-sm font-semibold text-gray-800 mb-3">通知設定</h4>
+
+                              {/* Notification Enable Checkbox */}
+                              <div className="flex items-center space-x-3 mb-3">
+                                <input
+                                  id="notify"
+                                  type="checkbox"
+                                  checked={notifyEnabled}
+                                  onChange={(e) =>
+                                    setNotifyEnabled(e.target.checked)
+                                    // handleLineLogin()
+                                    // if (liffManager.isLoggedIn()) {
+                                    //   await liffManager.logout();
+                                    // }
+                                  }
+                                  className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                                  data-testid="checkbox-enable-notifications"
+                                />
+                                <label htmlFor="notify" className="text-sm text-gray-700 font-medium">
+                                  フォーム回答通知を公式LINEで受け取る
+                                </label>
+                              </div>
+
+                              {/* Conditional Notification Configuration */}
+                              {notifyEnabled && (
+                                <div className="mt-3 p-3 bg-white rounded border">
+                                  {!cookieInfo?.hasUid ? (
+                                    // Show login prompt when notifications enabled but not logged in or no LIFF login
+                                    <div className="text-center">
+                                      <p className="text-sm text-gray-600 mb-3">
+                                        通知機能を使用するにはLINEログインが必要です
                                       </p>
                                       <Button
                                         onClick={() => {
-                                          setIsAdmin(false);
-                                          setIsTab('secret');
+                                          // ログイン後にチャネル設定画面に戻るよう状態を事前保存
+                                          sessionStorage.setItem('appState', JSON.stringify({
+                                            isTab: 'secret',
+                                            isAdmin: false,
+                                            isAutoMode: false
+                                          }));
+                                          handleLineLogin();
                                         }}
-                                        variant="outline"
-                                        size="sm"
-                                        className="mt-2 text-xs"
-                                        data-testid="button-goto-line-settings"
+                                        disabled={loginMutation.isPending}
+                                        className="bg-[#00be00] hover:bg-[#00a000] text-white"
+                                        data-testid="button-login-for-notifications"
                                       >
-                                        公式LINE設定画面へ
+                                        {loginMutation.isPending ? '認証中...' : 'LINEログインして通知を設定'}
                                       </Button>
+                                    </div>
+                                  ) : (
+                                    // Show notification configuration when logged in
+                                    <div>
+                                      <label className="block text-sm text-gray-700 mb-2">受信用公式LINE</label>
+                                      <select
+                                        className="w-full p-2 border border-gray-300 rounded text-sm"
+                                        value={selectedBasicId}
+                                        onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
+                                        data-testid="select-basic-id"
+                                      >
+                                        {!accounts.length && <option value="">（未登録）</option>}
+                                        {accounts.map((a) => {
+                                          const text = (a.channelName || a.basicId);
+                                          const fontSize = text.length > 20 ? "12px" : "14px";
+                                          return (
+                                            <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
+                                              {text}
+                                            </option>
+                                          );
+                                        })}
+                                      </select>
+                                      {!accounts.length && (
+                                        <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
+                                          <p className="text-xs text-amber-700">
+                                            公式LINEアカウントが未登録です。設定画面で公式LINEを登録してください。
+                                          </p>
+                                          <Button
+                                            onClick={() => {
+                                              setIsAdmin(false);
+                                              setIsTab('secret');
+                                            }}
+                                            variant="outline"
+                                            size="sm"
+                                            className="mt-2 text-xs"
+                                            data-testid="button-goto-line-settings"
+                                          >
+                                            公式LINE設定画面へ
+                                          </Button>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
                               )}
+
+                              {!notifyEnabled && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                  通知を無効にした場合、フォーム回答の通知は送信されません
+                                </p>
+                              )}
                             </div>
-                          )}
 
-                          {!notifyEnabled && (
-                            <p className="text-xs text-gray-500 mt-2">
-                              通知を無効にした場合、フォーム回答の通知は送信されません
-                            </p>
-                          )}
-                        </div>
-
-                        {formUrl &&
-                          <Button
-                            onClick={handleGenerateLink}
-                            disabled={isDetecting}
-                            variant={formUrl ? 'default' : 'outline'}
-                            size="sm"
-                            className="mt-2 w-full text-white border-blue-300 hover:bg-blue-500 mb-2"
-                          >
-                            {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
-                          </Button>
-                        }
-                      </div>
+                            {formUrl &&
+                              <Button
+                                onClick={handleGenerateLink}
+                                disabled={isDetecting}
+                                variant={formUrl ? 'default' : 'outline'}
+                                size="sm"
+                                className="mt-2 w-full text-white border-blue-300 hover:bg-blue-500 mb-2"
+                              >
+                                {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
+                              </Button>
+                            }
+                          </div>
+                        </>
+                      }
 
                       <div className="space-y-3">
                         {isDetecting &&
@@ -1196,28 +1263,6 @@ export default function Home() {
                           </>
                         }
                       </div>
-
-                      {/* {notifyEnabled && (
-                        <div className="border-t pt-4">
-                          <div className="space-y-2">
-                            <p className="text-gray-600 mb-6 text-xs leading-relaxed" style={{ color: !accounts.length ? 'red' : undefined }}>
-                              回答通知を受け取るには、公式LINEの設定が必要です
-                            </p>
-                            <Button
-                              onClick={() => {
-                                handleLineLogin();
-                                setIsAdmin(false);
-                                setIsTab('secret');
-                              }}
-                              disabled={loginMutation.isPending}
-                              className="w-full bg-green-600 hover:bg-green-700"
-                              data-testid="button-line-login"
-                            >
-                              {loginMutation.isPending ? '認証中...' : 'フォーム回答通知機能 設定画面へ'}
-                            </Button>
-                          </div>
-                        </div>
-                      )} */}
                     </div>
                   )}
                   {isTab === 'top' && (
@@ -1247,7 +1292,7 @@ export default function Home() {
                         </div>
                       )} */}
                       {/* LIFF ID 設定フォーム */}
-                      <div className="p-3 bg-blue-50 rounded-lg mb-4">
+                      {/* <div className="p-3 bg-blue-50 rounded-lg mb-4">
                         <h5 className="text-sm font-semibold text-gray-800 mb-1">LIFF ID設定</h5>
                         <p className="text-sm text-gray-700 mb-3">
                           LINE連携に必要なLIFF IDを設定してください
@@ -1286,74 +1331,25 @@ export default function Home() {
                                 </FormItem>
                               )}
                             />
-
-                            {/* <div className="flex items-center justify-between">
-                              <div className="text-xs text-gray-600">
-                                {(() => {
-                                  const sp = new URLSearchParams(window.location.search);
-                                  const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                                  const liffIdFromForm = liffIdForm.watch('liffId');
-                                  const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-
-                                  if (liffSettingsQuery.isLoading) {
-                                    return <span className="text-blue-600">読み込み中...</span>;
-                                  }
-                                  return hasLiffId ? (
-                                    <span className="text-green-700 font-medium">設定済み</span>
-                                  ) : (
-                                    <span className="text-orange-600">未設定</span>
-                                  );
-                                })()}
-                              </div>
-
-                              <Button
-                                type="submit"
-                                size="sm"
-                                disabled={saveLiffIdMutation.isPending}
-                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5"
-                                data-testid="button-save-liff-id"
-                              >
-                                {saveLiffIdMutation.isPending ? '保存中...' : '保存'}
-                              </Button>
-                            </div> */}
                           </form>
                         </Form>
-                      </div>
+                      </div> */}
 
                       <Button
                         onClick={() => { setIsAdmin(true), setIsTab('admin') }}
                         variant="default"
                         size="sm"
-                        disabled={(() => {
-                          const sp = new URLSearchParams(window.location.search);
-                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                          const liffIdFromForm = liffIdForm.watch('liffId');
-                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return !hasLiffId;
-                        })()}
-                        className={`w - full mt - 2 ${(() => {
-                          const sp = new URLSearchParams(window.location.search);
-                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                          const liffIdFromForm = liffIdForm.watch('liffId');
-                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return !hasLiffId
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                            : 'text-green-700 border-blue-300 hover:bg-blue-700 text-white';
-                        })()
-                          } `}
+                        // disabled={(() => {
+                        //   const sp = new URLSearchParams(window.location.search);
+                        //   const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+                        //   const liffIdFromForm = liffIdForm.watch('liffId');
+                        //   const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
+                        //   return !hasLiffId;
+                        // })()}
+                        className="w-full mt-2 text-green-700 border-blue-300 hover:bg-blue-700 text-white"
                         data-testid="button-start-admin"
                       >
-                        {(() => {
-                          const sp = new URLSearchParams(window.location.search);
-                          const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-                          const liffIdFromForm = liffIdForm.watch('liffId');
-                          const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId;
-                          return !hasLiffId ? (
-                            <span>準備中... (LIFF IDを入力してください)</span>
-                          ) : (
-                            <span>準備完了！　はじめる</span>
-                          );
-                        })()}
+                        <span>準備完了！　はじめる</span>
                       </Button>
                     </>
                   )}
