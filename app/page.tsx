@@ -99,6 +99,7 @@ export default function Home() {
   const { toast, showToast, hideToast } = useToastNotification();
   const didRunRef = useRef(false);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
+  const [atherAccounts, setAtherAccounts] = useState(false)
 
   // LIFF ID form setup
   const liffIdForm = useForm<LiffIdFormData>({
@@ -975,9 +976,14 @@ export default function Home() {
                       {/* LIFF ID 設定フォーム */}
                       <div className="p-3 bg-blue-50 rounded-lg mb-4">
                         <h5 className="text-sm font-semibold text-gray-800 mb-1">LIFF ID設定</h5>
-                        <p className="text-sm text-gray-700 mb-3">
+                        <p className="text-sm text-gray-700 mb-1">
                           LINE連携に必要なLIFF IDを設定してください
                         </p>
+                        <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
+                          {/* <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" /> */}
+                          <h5 className="text-sm text-amber-800 mb-2">（Googleフォーム側の重要な設定 はこちら）</h5>
+                        </button>
+
                         <p className="text-sm text-gray-600">
                           <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
                             LINE Developers Console
@@ -986,7 +992,7 @@ export default function Home() {
                         <p className="text-sm text-gray-600">
                           <span className="M7eMe">
                             <span style={{
-                              backgroundColor: '#06c755',
+                              backgroundColor: '#00be00',
                               color: '#ffffff',
                               marginRight: 2
                             }}>{`</> `}</span> <span > <strong> LINEログイン →　 </strong></span>
@@ -996,7 +1002,7 @@ export default function Home() {
                           <strong
                             style={{
                               textDecoration: "underline",
-                              textDecorationColor: "#06c755",
+                              textDecorationColor: "#00be00",
                               textDecorationThickness: "5px", // 下線の太さを指定
                             }}
                           >
@@ -1179,22 +1185,16 @@ export default function Home() {
                                           );
                                         })}
                                       </select>
-                                      {!accounts.length && (
+                                      {accounts.length ?
+                                        <button onClick={() => setAtherAccounts(true)}>他の公式LINEを設定する</button>
+                                        : null}
+                                      {atherAccounts || !accounts.length && (
                                         <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
-                                          <p className="text-xs text-amber-700">
+                                          <p className="text-xs text-amber-700 mb-2">
                                             公式LINEアカウントが未登録です。設定画面で公式LINEを登録してください。
                                           </p>
-                                          <Button
-                                            onClick={() => {
-                                              setIsAdmin(false);
-                                              setIsTab('secret');
-                                            }}
-                                            variant="outline"
-                                            size="sm"
-                                            className="mt-2 text-xs"
-                                            data-testid="button-goto-line-settings"
-                                          >
-                                            公式LINE設定画面へ
+                                          <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
+                                            ログイン
                                           </Button>
                                         </div>
                                       )}
