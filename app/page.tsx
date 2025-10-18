@@ -853,7 +853,7 @@ export default function Home() {
         type: "card" as const,
         formUrl: generatedUrl,
         title: formTitle || "Googleフォーム",
-        desc: formDescription || "フォームに回答してください。",
+        desc: formDescription,
         bgcolor: formBgcolor || "#555555",
         ...(lid ? { lid } : { aid, formId, exp, sig }),
       };
