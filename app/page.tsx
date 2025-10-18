@@ -688,7 +688,7 @@ export default function Home() {
     try {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
-      let nextDesc = formDescription || "";
+      let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
       let nextBgcolor = formBgcolor || "#555555";
 
       // 任意の検出
@@ -853,7 +853,7 @@ export default function Home() {
         type: "card" as const,
         formUrl: generatedUrl,
         title: formTitle || "Googleフォーム",
-        desc: formDescription || "フォームに回答してください。",
+        desc: formDescription || "フォームに回答してください。WW",
         bgcolor: formBgcolor || "#555555",
         ...(lid ? { lid } : { aid, formId, exp, sig }),
       };
