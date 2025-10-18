@@ -9,7 +9,7 @@ export async function generateMetadata({ searchParams }: { searchParams: any }) 
   const sp = await searchParams;
   const lid = (sp.lid || "").trim();
   let title = sp.title || "Googleフォーム";
-  let desc = sp.desc || "リンクを開くにはこちらをタップ";
+  let desc = sp.desc || "";
 
   // lid があれば Cosmos からタイトル/説明を取得
   if (lid) {

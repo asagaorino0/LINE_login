@@ -86,7 +86,7 @@ export default function Home() {
 
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
-  const [formDescription, setFormDescription] = useState('リンクを開くにはこちらをタップ');
+  const [formDescription, setFormDescription] = useState('');
   const [formBgcolor, setFormBgcolor] = useState('#555555');
   const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [lineUserId, setLineUserId] = useState<string>("");
@@ -688,7 +688,7 @@ export default function Home() {
     try {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
-      let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
+      let nextDesc = formDescription || "";
       let nextBgcolor = formBgcolor || "#555555";
 
       // 任意の検出

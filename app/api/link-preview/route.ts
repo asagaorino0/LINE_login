@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
     const form = url.searchParams.get('form');
     const title = url.searchParams.get('title') ?? '公式LINE連携_Googleフォーム';
-    const desc = url.searchParams.get('desc') ?? 'リンクを開くにはこちらをタップ';
+    const desc = url.searchParams.get('desc') ?? '';
     const image = url.searchParams.get('image') ?? `${origin}/line-preview.png`;
     const notify: '0' | '1' = url.searchParams.get('notify') === '1' ? '1' : '0';
 
