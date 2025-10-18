@@ -824,7 +824,7 @@ export default function Home() {
     const params = new URLSearchParams({
       form: viewUrlNormalized,
       title: formTitle || '',
-      desc: formDescription || 'リンクを開くにはこちらをタップ',
+      desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
       notify: notifyEnabled ? '1' : '0',
       v: String(Date.now()),
     });
