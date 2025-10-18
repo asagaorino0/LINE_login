@@ -688,7 +688,7 @@ export default function Home() {
     try {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
-      let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
+      let nextDesc = formDescription;
       let nextBgcolor = formBgcolor || "#555555";
 
       // 任意の検出
@@ -819,17 +819,17 @@ export default function Home() {
   };
 
   /* ---- preview card image ---- */
-  // const previewUrl = useMemo(() => {
-  //   if (!viewUrlNormalized) return '';
-  //   const params = new URLSearchParams({
-  //     form: viewUrlNormalized,
-  //     title: formTitle || '',
-  //     desc: formDescription,
-  //     notify: notifyEnabled ? '1' : '0',
-  //     v: String(Date.now()),
-  //   });
-  //   return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  // }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
+  const previewUrl = useMemo(() => {
+    if (!viewUrlNormalized) return '';
+    const params = new URLSearchParams({
+      form: viewUrlNormalized,
+      title: formTitle || '',
+      desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
+      notify: notifyEnabled ? '1' : '0',
+      v: String(Date.now()),
+    });
+    return `${window.location.origin}/api/link-preview?${params.toString()}`;
+  }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
