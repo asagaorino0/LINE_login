@@ -688,7 +688,7 @@ export default function Home() {
     try {
       const normalized = viewUrlNormalized;
       let nextTitle = formTitle || "Googleフォーム";
-      let nextDesc = formDescription || "リンクを開くにはこちらをタップ";
+      let nextDesc = formDescription || "リンクを開くにはこちらをタップww";
       let nextBgcolor = formBgcolor || "#555555";
 
       // 任意の検出
