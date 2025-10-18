@@ -84,7 +84,7 @@ export default function OpenFormClient() {
             type: "card" as const,
             formUrl: prefill,
             title: link.title || "Googleフォーム",
-            desc: link.desc || "フォームに回答してください。",
+            desc: link.desc,
             bgcolor: link.bgcolor,
             lid,
           };
