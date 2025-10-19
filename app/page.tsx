@@ -1031,6 +1031,98 @@ export default function Home() {
                                       {...field}
                                     />
                                   </FormControl>
+                                  <div className="my-4 p-4 bg-gray-50 rounded-lg border">
+                                    <h4 className="text-sm font-semibold text-gray-800 mb-3">通知設定</h4>
+                                    <div className="flex items-center space-x-3 mb-3">
+                                      <input
+                                        id="notify"
+                                        type="checkbox"
+                                        checked={notifyEnabled}
+                                        onChange={(e) =>
+                                          setNotifyEnabled(e.target.checked)
+                                          // handleLineLogin()
+                                          // if (liffManager.isLoggedIn()) {
+                                          //   await liffManager.logout();
+                                          // }
+                                        }
+                                        className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                                        data-testid="checkbox-enable-notifications"
+                                      />
+                                      <label htmlFor="notify" className="text-sm text-gray-700 font-medium">
+                                        フォーム回答通知を公式LINEで受け取る
+                                      </label>
+                                    </div>
+                                    {notifyEnabled && (
+                                      <div className="mt-3 p-3 bg-white rounded border">
+                                        {!cookieInfo?.hasUid ? (
+                                          // Show login prompt when notifications enabled but not logged in or no LIFF login
+                                          <div className="text-center">
+                                            <p className="text-sm text-gray-600 mb-3">
+                                              通知機能を使用するにはLINEログインが必要です
+                                            </p>
+                                            <Button
+                                              onClick={() => {
+                                                // ログイン後にチャネル設定画面に戻るよう状態を事前保存
+                                                sessionStorage.setItem('appState', JSON.stringify({
+                                                  isTab: 'secret',
+                                                  isAdmin: false,
+                                                  isAutoMode: false
+                                                }));
+                                                handleLineLogin();
+                                              }}
+                                              disabled={loginMutation.isPending}
+                                              className="bg-[#00be00] hover:bg-[#00a000] text-white"
+                                              data-testid="button-login-for-notifications"
+                                            >
+                                              {loginMutation.isPending ? '認証中...' : 'LINEログインして通知を設定'}
+                                            </Button>
+                                          </div>
+                                        ) : (
+                                          // Show notification configuration when logged in
+                                          <div>
+                                            <label className="block text-sm text-gray-700 mb-2">受信用公式LINE</label>
+                                            <select
+                                              className="w-full p-2 border border-gray-300 rounded text-sm"
+                                              value={selectedBasicId}
+                                              onChange={(e) => { setSelectedBasicId(e.target.value); setBasicId(e.target.value); }}
+                                              data-testid="select-basic-id"
+                                            >
+                                              {!accounts.length && <option value="">（未登録）</option>}
+                                              {accounts.map((a) => {
+                                                const text = (a.channelName || a.basicId);
+                                                const fontSize = text.length > 20 ? "12px" : "14px";
+                                                return (
+                                                  <option key={a.basicId} value={a.basicId} style={{ fontSize }}>
+                                                    {text}
+                                                  </option>
+                                                );
+                                              })}
+                                            </select>
+                                            {accounts.length ?
+                                              <button onClick={() => setAtherAccounts(true)}>他の公式LINEを設定する</button>
+                                              : null}
+                                            {atherAccounts || !accounts.length && (
+                                              <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
+                                                <p className="text-xs text-amber-700 mb-2">
+                                                  公式LINEアカウントが未登録です。設定画面で公式LINEを登録してください。
+                                                </p>
+                                                <Button onClick={handleLineLogin} disabled={false} className="w-full bg-[#00be00]">
+                                                  ログイン
+                                                </Button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {!notifyEnabled && (
+                                      <p className="text-xs text-gray-500 mt-2">
+                                        通知を無効にした場合、フォーム回答の通知は送信されません
+                                      </p>
+                                    )}
+                                  </div>
+
                                   <FormMessage className="text-xs" />
                                 </FormItem>
                               )}
@@ -1114,10 +1206,8 @@ export default function Home() {
                             ) : null}
 
                             {/* Notification Settings Section */}
-                            <div className="my-4 p-4 bg-gray-50 rounded-lg border">
+                            {/* <div className="my-4 p-4 bg-gray-50 rounded-lg border">
                               <h4 className="text-sm font-semibold text-gray-800 mb-3">通知設定</h4>
-
-                              {/* Notification Enable Checkbox */}
                               <div className="flex items-center space-x-3 mb-3">
                                 <input
                                   id="notify"
@@ -1137,8 +1227,6 @@ export default function Home() {
                                   フォーム回答通知を公式LINEで受け取る
                                 </label>
                               </div>
-
-                              {/* Conditional Notification Configuration */}
                               {notifyEnabled && (
                                 <div className="mt-3 p-3 bg-white rounded border">
                                   {!cookieInfo?.hasUid ? (
@@ -1208,7 +1296,7 @@ export default function Home() {
                                   通知を無効にした場合、フォーム回答の通知は送信されません
                                 </p>
                               )}
-                            </div>
+                            </div> */}
 
                             {formUrl &&
                               <Button
