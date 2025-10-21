@@ -36,7 +36,28 @@ type LiffSettingsResp = {
 
 const LIFF_ID_RE = /^\d{6,}-[A-Za-z0-9_-]+$/;
 // ★ 指定の固定フォールバック
-const FALLBACK_LIFF_ID = '2008088055-gKXl6W1p';
+// const FALLBACK_LIFF_ID = new URLSearchParams(window.location.search).get('liff') || '';
+// ✅ URLの末尾やクエリから動的に LIFF ID を取得し、FALLBACK_LIFF_ID に代入
+const FALLBACK_LIFF_ID = (() => {
+  if (typeof window === 'undefined') return ''; // SSR対策
+
+  const url = new URL(window.location.href);
+
+  // ① クエリパラメータ ?liff=xxxx の場合
+  const fromQuery = url.searchParams.get('liff');
+  if (fromQuery) return fromQuery;
+
+  // ② URLの末尾が xxxx の場合（例: /open/2008088055-gKXl6W1p）
+  const pathParts = url.pathname.split('/');
+  const lastPart = pathParts[pathParts.length - 1];
+  if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
+
+  // ③ 該当なし
+  return '';
+})();
+
+console.log('FALLBACK_LIFF_ID:', FALLBACK_LIFF_ID);
+
 
 /* ------------------------------ Zod Schemas -------------------------------- */
 
