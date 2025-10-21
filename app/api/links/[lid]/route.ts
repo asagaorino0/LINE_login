@@ -1,7 +1,7 @@
 // app/api/links/[lid]/route.ts
 export const runtime = "nodejs";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
 type LinkDoc = {
@@ -34,10 +34,10 @@ const normalizeGoogleFormViewUrl = (url: string) => {
   }
 };
 
-// ✅ 第2引数の型を Next.js 標準に合わせる（lid は必須）
-export async function GET(req: NextRequest, { params }: { params: { lid: string } }) {
+// ✅ 第2引数は Record<string, string> にする
+export async function GET(req: Request, { params }: { params: Record<string, string> }) {
   try {
-    const lid = params.lid?.trim();
+    const lid = params?.lid?.trim();
     if (!lid) {
       return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
     }
@@ -47,11 +47,12 @@ export async function GET(req: NextRequest, { params }: { params: { lid: string 
       return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
     }
 
+    // 期限切れ
     if (typeof resource.expiresAt === "number" && resource.expiresAt > 0 && Date.now() > resource.expiresAt) {
       return NextResponse.json({ ok: false, code: "LINK_EXPIRED" }, { status: 410 });
     }
 
-    const q = req.nextUrl.searchParams;
+    const q = new URL(req.url).searchParams;
     const liffFromQuery = q.get("liff") || q.get("liffId") || undefined;
 
     const formUrl = normalizeGoogleFormViewUrl(resource.formUrl);
@@ -69,13 +70,8 @@ export async function GET(req: NextRequest, { params }: { params: { lid: string 
       desc: resource.desc || "",
       formUrl,
       entry,
-      notify,
-      liffId,
-      // 必要なら以下を開放
-      // aid: resource.aid ?? undefined,
-      // basicId: resource.basicId ?? undefined,
-      // formId: resource.formId ?? undefined,
-      // expiresAt: resource.expiresAt ?? undefined,
+      notify, // 0/1
+      liffId, // 変動OK
     };
 
     const res = NextResponse.json(body, { status: 200 });
