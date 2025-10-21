@@ -100,6 +100,8 @@ export default function Home() {
   const didRunRef = useRef(false);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
   const [atherAccounts, setAtherAccounts] = useState(false)
+  // 追加
+  const [createdLid, setCreatedLid] = useState<string | null>(null);
 
   // LIFF ID form setup
   const liffIdForm = useForm<LiffIdFormData>({
@@ -776,6 +778,7 @@ export default function Home() {
       }
       const enhancedLink = u.toString(); // 余計な空白が入らない
       setSignedLink(enhancedLink);
+      if (j.lid) setCreatedLid(j.lid);  // ★ 作成された lid を保持
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
@@ -812,10 +815,13 @@ export default function Home() {
       }
 
       const params = new URLSearchParams();
-      params.set('usp', 'pp_url');
-      params.set(userIdEntry, userId);
-
-      return `${baseUrl}?${params.toString()}`;
+      if (userId) {
+        params.set('usp', 'pp_url');
+        params.set(userIdEntry, userId);
+        return `${baseUrl}?${params.toString()}`;
+      }
+      // UID が無い時はプリフィル無しで返す
+      return baseUrl;
     } catch (e) {
       console.error('Failed to generate prefill URL:', e);
       return originalUrl;
@@ -838,8 +844,10 @@ export default function Home() {
   /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
     //    if (!userProfile || !generatedUrl) return;
-    if (!generatedUrl) return;
-    if (notifyEnabled && !userProfile) return;
+    // 送信は「通知ON かつ UIDあり」の時だけ
+    if (notifyEnabled && !userProfile) {
+      // 通知ONでUID無し → 送信しないが遷移は後段で処理
+    }
 
     const qs = new URLSearchParams(window.location.search);
     const lid = qs.get("lid") || "";
@@ -894,7 +902,39 @@ export default function Home() {
 
     if (!debug && !navigatedRef.current) {
       navigatedRef.current = true;
-      const go = () => window.location.replace(generatedUrl);
+      const go = () => {
+        // 1) UID あり & generatedUrl あり → そのままフォームへ
+        if (userProfile?.userId && generatedUrl) {
+          window.location.replace(generatedUrl);
+          return;
+        }
+        // 2) UID なし → LIFFユニバーサルリンクで /open を in-client で起動し、UID を取ってからフォームへ
+        const sp = new URLSearchParams(window.location.search);
+        const liffFromUrl = sp.get("liff") || sp.get("liffId");
+        const liffFromState = liffIdForm.getValues()?.liffId?.trim() || liffSettingsQuery.data?.liffId?.trim() || null;
+        const liffId = liffFromUrl || liffFromState || null;
+        if (liffId && createdLid) {
+          const entryParam = overrideUserEntry ? ensureEntryFormat(overrideUserEntry) : "";
+          const qs = new URLSearchParams();
+          qs.set("lid", createdLid);
+          if (entryParam) qs.set("entry", entryParam);
+          // 可能なら liff も明示（保険）
+          qs.set("liff", liffId);
+          const universal = `https://liff.line.me/${encodeURIComponent(liffId)}?${qs.toString()}`;
+          if ((window as any).liff?.openWindow) {
+            (window as any).liff.openWindow({ url: universal, external: false });
+          } else {
+            window.location.href = universal;
+          }
+          return;
+        }
+        // 3) それでも LIFF/ lid が無い→ 最後の手段：generatedUrl があればそれ、なければ警告
+        if (generatedUrl) {
+          window.location.replace(generatedUrl);
+        } else {
+          alert("フォームに進めませんでした。LIFF ID または 生成リンクの再作成をご確認ください。");
+        }
+      };
       if (manual) go(); else setTimeout(go, 250);
     }
   };
