@@ -14,25 +14,40 @@ export default function OpenFormClient() {
   // 通知送信関数（確実に待つ）
   async function sendNotifyCard(payload: any) {
     try {
-      let beaconed = false;
-      if ("sendBeacon" in navigator) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        beaconed = navigator.sendBeacon("/api/line", blob);
-      }
-      if (!beaconed) {
-        await fetch("/api/line", {
+      // 1) fetch を本線に。（beacon はフォールバック）
+      let ok = false;
+      try {
+        const r = await fetch("/api/line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true,
           credentials: "include",
         });
+        ok = r.ok;
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          console.warn("[notify] fetch failed:", r.status, text);
+        }
+      } catch (e) {
+        console.warn("[notify] fetch threw:", e);
       }
-      await new Promise((r) => setTimeout(r, 600));
+
+      // 2) fetch がダメなら beacon に退避
+      if (!ok && "sendBeacon" in navigator) {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        const sent = navigator.sendBeacon("/api/line", blob);
+        console.log("[notify] beacon =", sent);
+        ok = sent;
+      }
+
+      // 3) iOS/Safari 対策：遷移直前に待機
+      await new Promise((r) => setTimeout(r, ok ? 400 : 900));
     } catch (e) {
       console.warn("[notify] failed:", e);
     }
   }
+
 
   useEffect(() => {
     (async () => {
@@ -63,9 +78,10 @@ export default function OpenFormClient() {
             : (liffManager as any).isInClient?.() ?? false;
 
         // in-client でなければ「LINEで開く」ボタンを出す（ログイン不要）
-        if (!inClient) {
-          setShowOpenInLine(true);
-          return;
+        // ★追加: in-client かつ未ログインならサイレントSSO
+        if (inClient && !(window as any).liff?.isLoggedIn?.()) {
+          await (window as any).liff.login({ redirectUri: location.href, prompt: "none" });
+          return; // リダイレクト後に再実行されて通知まで到達
         }
 
         // 4) in-client ならログイン不要で UID 取得できる
@@ -91,7 +107,7 @@ export default function OpenFormClient() {
             : viewUrl;
 
         // 通知（uidがあるときのみ送信）
-        if (!sentRef.current && link.notify === 1 && uid) {
+        if (!sentRef.current && Number(link.notify) === 1 && uid) {
           sentRef.current = true;
           const payload = {
             userId: uid,
