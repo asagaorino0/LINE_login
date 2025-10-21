@@ -48,16 +48,14 @@ export default function OpenFormClient() {
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        // 1) /api/links でリンク情報取得
+        // 1) /api/links
         const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        // 2) LIFF ID を決定（URLクエリ > リンク設定 > ENVデフォルトの優先）
+        // 2) LIFF ID
         const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
-        const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as
-          | string
-          | undefined;
+        const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
 
         setLiffIdForButton(liffToUse);
@@ -65,14 +63,10 @@ export default function OpenFormClient() {
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        // // 3) in-client 判定
-        // const inClient = typeof (window as any).liff?.isInClient === "function"
-        //   ? (window as any).liff.isInClient()
-        //   : (liffManager as any).isInClient?.() ?? false;
-        const inClient =
-          typeof (window as any).liff?.isInClient === "function"
-            ? (window as any).liff.isInClient()
-            : (liffManager as any).isInClient?.() ?? false;
+        // 3) in-client 判定
+        const inClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
 
         // 3.5) in-client でない → ユニバーサルリンクへ自動遷移（ループ防止あり）
         if (!inClient) {
@@ -121,10 +115,10 @@ export default function OpenFormClient() {
           if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
 
-        // 6) prefill URL を作成（UID を埋め込む）
+        // 6) prefill
         const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // 7) 通知（任意）— ここを“確実に待つ”実装へ変更
+        // 7) 通知（任意）
         if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
@@ -132,17 +126,29 @@ export default function OpenFormClient() {
             type: "card" as const,
             formUrl: prefill,
             title: link.title || "Googleフォーム",
-            desc:
-              link.desc ||
-              "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
+            desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
             bgcolor: link.bgcolor,
-            lid, // ★ 重要：サーバでリンク判定する場合に必須
+            lid,
           };
-          await sendNotifyCard(payload); // ★ 遷移前に必ず完了を待つ
+          try {
+            let sent = false;
+            if ("sendBeacon" in navigator) {
+              const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+              sent = navigator.sendBeacon("/api/line", blob);
+            }
+            if (!sent) {
+              await fetch("/api/line", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              });
+            }
+          } catch { /* ignore */ }
         }
 
-        // 8) 遷移（prefill へ）
-        location.replace(prefill);
+        // 8) 遷移
+        setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));
