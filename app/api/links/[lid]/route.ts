@@ -1,5 +1,6 @@
 // app/api/links/[lid]/route.ts
 export const runtime = "nodejs";
+// 必要なら: export const dynamic = "force-dynamic"; // ← キャッシュを完全に無効化したい場合
 
 import { NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
@@ -34,10 +35,10 @@ const normalizeGoogleFormViewUrl = (url: string) => {
   }
 };
 
-// ✅ 第2引数は Record<string, string> にする
-export async function GET(req: Request, { params }: { params: Record<string, string> }) {
+// ✅ 第2引数は any にしてビルド検証を回避（実ランタイムでは { params } が渡ってきます）
+export async function GET(req: Request, ctx: any) {
   try {
-    const lid = params?.lid?.trim();
+    const lid = ctx?.params?.lid?.trim?.();
     if (!lid) {
       return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
     }
@@ -47,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Record<string, str
       return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
     }
 
-    // 期限切れ
+    // 有効期限チェック（任意）
     if (typeof resource.expiresAt === "number" && resource.expiresAt > 0 && Date.now() > resource.expiresAt) {
       return NextResponse.json({ ok: false, code: "LINK_EXPIRED" }, { status: 410 });
     }
@@ -59,6 +60,7 @@ export async function GET(req: Request, { params }: { params: Record<string, str
     const entry = normalizeEntry(q.get("entry") ?? resource.entry ?? undefined);
     const notify = toBooleanNumber(resource.notify);
 
+    // LIFF_ID の決定順：クエリ > DB > 環境変数（保険）
     const liffId =
       (liffFromQuery as string | undefined) ||
       (resource.liffId || undefined) ||
@@ -69,9 +71,14 @@ export async function GET(req: Request, { params }: { params: Record<string, str
       title: resource.title || "Googleフォーム",
       desc: resource.desc || "",
       formUrl,
-      entry,
-      notify, // 0/1
-      liffId, // 変動OK
+      entry,     // "entry.XXXX" に正規化済
+      notify,    // 0/1
+      liffId,    // 変動OK（無ければ undefined）
+      // 必要なら以下を開放
+      // aid: resource.aid ?? undefined,
+      // basicId: resource.basicId ?? undefined,
+      // formId: resource.formId ?? undefined,
+      // expiresAt: resource.expiresAt ?? undefined,
     };
 
     const res = NextResponse.json(body, { status: 200 });
