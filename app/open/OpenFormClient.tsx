@@ -10,6 +10,8 @@ export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
   const sentRef = useRef(false);
+  const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
+
 
   useEffect(() => {
     (async () => {
@@ -27,6 +29,8 @@ export default function OpenFormClient() {
         const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
         const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
+
+        setLiffIdForButton(liffToUse);
 
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
@@ -79,7 +83,7 @@ export default function OpenFormClient() {
           userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
         } else {
           const det = await GoogleFormsManager.detectEntryIds(viewUrl).catch(() => null);
-          if (det?.success && det.userId) userEntry = det.userId;
+          if (det?.success && det.userId) userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
           if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
 
@@ -127,10 +131,14 @@ export default function OpenFormClient() {
   // 保険：手動で「LINEで開く」
   const openInLine = () => {
     const qs = location.search || "";
-    const liffId = new URLSearchParams(location.search).get("liff") || new URLSearchParams(location.search).get("liffId");
-    const fallbackLiffId = liffId || ""; // 可能なら link.liffId を state に保持して使う
-    const universal = `https://liff.line.me/${encodeURIComponent(fallbackLiffId)}${qs}`;
-    // liff.openWindow が無い環境でも動くように location を直接置換
+    // ★ クエリ優先＋無ければ state の liffIdForButton を使う
+    const fromQuery = new URLSearchParams(qs).get("liff") || new URLSearchParams(qs).get("liffId");
+    const id = fromQuery || liffIdForButton;
+    if (!id) {
+      alert("LIFF ID が特定できません（URLかリンク設定をご確認ください）");
+      return;
+    }
+    const universal = `https://liff.line.me/${encodeURIComponent(id)}${qs}`;
     if ((window as any).liff?.openWindow) {
       (window as any).liff.openWindow({ url: universal, external: false });
     } else {
