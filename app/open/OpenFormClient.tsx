@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
+const ONCE_KEY = "redirectedToLiff";
+
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
@@ -16,38 +18,43 @@ export default function OpenFormClient() {
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        // 1) リンク情報
+        // 1) /api/links
         const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        // 2) LIFF 初期化（LIFF URL から来ているので liffId は暗黙に決定される）
+        // 2) LIFF ID
         const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
         const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
+
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        // 3) in-client の判定
+        // 3) in-client 判定
         const inClient = typeof (window as any).liff?.isInClient === "function"
           ? (window as any).liff.isInClient()
           : (liffManager as any).isInClient?.() ?? false;
 
-        // 4) 認証フロー
-        if (!inClient && !liffManager.isLoggedIn()) {
-          // 外部ブラウザ → ログインが必要（or LINEで開いてもらう）
-          // a) 自動ログインさせたい場合（必要ならON）
-          // const back = new URL(location.href);
-          // back.searchParams.set("liffId", liffToUse);
-          // await liffManager.login({ redirectUri: back.toString() });
-          // return;
-
-          // b) 画面上に「LINEで開く」ボタンを出す（おすすめ）
-          setShowOpenInLine(true);
-          return;
+        // 3.5) in-client でない → ユニバーサルリンクへ自動遷移（ループ防止あり）
+        if (!inClient) {
+          const already = sessionStorage.getItem(ONCE_KEY) === "1";
+          if (!already) {
+            sessionStorage.setItem(ONCE_KEY, "1");
+            // いまのクエリをそのまま引き継ぐ
+            const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+            location.replace(universal);
+            return;
+          } else {
+            // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
+            setShowOpenInLine(true);
+            return;
+          }
         }
+        // in-client で再入場できたのでフラグをクリア
+        sessionStorage.removeItem(ONCE_KEY);
 
-        // 5) プロフィール取得（in-client ならログイン画面は出ない）
+        // 4) プロフィール取得（in-clientなのでログイン画面は出ない）
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
 
@@ -62,7 +69,7 @@ export default function OpenFormClient() {
           }),
         });
 
-        // 6) GoogleフォームURL 正規化 & entry 決定
+        // 5) GoogleフォームURL & entry
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
         const entryFromUrl = qs.get("entry");
         let userEntry: string | null = null;
@@ -76,10 +83,10 @@ export default function OpenFormClient() {
           if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
 
-        // 7) prefill 作成
+        // 6) prefill
         const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // 8) 通知（任意）
+        // 7) 通知（任意）
         if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
@@ -108,7 +115,7 @@ export default function OpenFormClient() {
           } catch { /* ignore */ }
         }
 
-        // 9) 遷移
+        // 8) 遷移
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
@@ -117,16 +124,18 @@ export default function OpenFormClient() {
     })();
   }, []);
 
-  // 外部ブラウザ用：LINEで開くボタン
+  // 保険：手動で「LINEで開く」
   const openInLine = () => {
-    // LIFF URL へ自分自身を開き直す（external: false でLINE内へ）
-    const base = typeof window !== "undefined" ? window.location.origin : "https://line-login-self.vercel.app";
-    const url = new URL("/open", base);
-    const qs = new URLSearchParams(location.search);
-    // liffId は付けなくてOK（LIFF URLにするなら下記のように）
-    // ここでは「このページ自体が LIFF アプリとして配信されている」想定
-    url.search = qs.toString();
-    (window as any).liff?.openWindow?.({ url: url.toString(), external: false });
+    const qs = location.search || "";
+    const liffId = new URLSearchParams(location.search).get("liff") || new URLSearchParams(location.search).get("liffId");
+    const fallbackLiffId = liffId || ""; // 可能なら link.liffId を state に保持して使う
+    const universal = `https://liff.line.me/${encodeURIComponent(fallbackLiffId)}${qs}`;
+    // liff.openWindow が無い環境でも動くように location を直接置換
+    if ((window as any).liff?.openWindow) {
+      (window as any).liff.openWindow({ url: universal, external: false });
+    } else {
+      location.href = universal;
+    }
   };
 
   return (
@@ -134,11 +143,8 @@ export default function OpenFormClient() {
       {showOpenInLine ? (
         <div className="text-center space-y-3">
           <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
-          <p className="text-xs text-gray-500">LINEアプリ内で開くとログインなしで進めます。</p>
-          <button
-            onClick={openInLine}
-            className="px-4 py-2 rounded bg-black text-white"
-          >
+          <p className="text-xs text-gray-500">自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。</p>
+          <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
             LINEで開く
           </button>
         </div>

@@ -1,126 +1,105 @@
-// // app/api/links/[lid]/route.ts
-// // export const runtime = "nodejs";
-// // import { NextRequest, NextResponse } from "next/server";
-// // import { getLinksByIdContainer } from "@/lib/cosmos";
-
-// // /** 同一オリジンなのでCORSは最小でOK */
-// // const ok = (b: any, s = 200) => NextResponse.json(b, { status: s });
-// // const fail = (b: any, s = 500) => NextResponse.json(b, { status: s });
-
-// // export async function GET(
-// //   _req: NextRequest,
-// //   { params }: { params: { lid: string } }
-// // ) {
-// //   try {
-// //     const lid = params.lid;
-// //     if (!lid) return fail({ ok: false, code: "NO_LID" }, 400);
-// //     const c = getLinksByIdContainer();
-// //     const { resource } = await c.item(lid, lid).read<any>();
-// //     if (!resource) return fail({ ok: false, code: "NOT_FOUND" }, 404);
-// //     const now = Math.floor(Date.now() / 1000);
-// //     if (resource.disabled) return fail({ ok: false, code: "LID_DISABLED" }, 403);
-// //     if (resource.expiresAt && resource.expiresAt > 0 && resource.expiresAt < now) {
-// //       return fail({ ok: false, code: "LID_EXPIRED" }, 410);
-// //     }
-// //     // 機微は返さない
-// //     const { aid, basicId = null, formUrl, title = null, desc = null, notify = 0, expiresAt = 0 } = resource;
-// //     return ok({ ok: true, aid, basicId, formUrl, title, desc, notify, expiresAt });
-// //   } catch (e: any) {
-// //     console.error("GET /api/links/[lid] failed:", e);
-// //     return fail({ ok: false, code: "LINK_FETCH_FAILED" }, 500);
-// //   }
-// // }
-// // app/api/links/[lid]/route.ts
-// import { NextResponse } from "next/server";
-// import { getLinksByIdContainer } from "@/lib/cosmos";
-
-// /* ---- CORS ---- */
-// function cors(req: Request) {
-//   const origin = req.headers.get("origin") ?? "*";
-//   return {
-//     "Access-Control-Allow-Origin": origin,
-//     "Access-Control-Allow-Credentials": "true",
-//     Vary: "Origin",
-//     "Access-Control-Allow-Methods": "GET,OPTIONS",
-//     "Access-Control-Allow-Headers": "content-type",
-//   } as const;
-// }
-// export async function OPTIONS(req: Request) {
-//   return new NextResponse(null, { status: 204, headers: cors(req) });
-// }
-// const ok = (req: Request, body: any, status = 200) =>
-//   NextResponse.json(body, { status, headers: cors(req) });
-// const fail = (req: Request, body: any, status = 500) =>
-//   NextResponse.json(body, { status, headers: cors(req) });
-
-// /* ---- GET /api/links/:lid ---- */
-// export async function GET(req: Request, ctx: any) {
-//   try {
-//     const lid: string | undefined = ctx?.params?.lid;
-//     if (!lid) return fail(req, { ok: false, code: "NO_LID" }, 400);
-
-//     const { resource } = await getLinksByIdContainer()
-//       .item(lid, lid)
-//       .read<{
-//         aid: string;
-//         basicId?: string | null;
-//         formUrl: string;
-//         formId?: string | null;
-//         title?: string | null;
-//         desc?: string | null;
-//         notify?: number;
-//         expiresAt?: number;
-//         disabled?: boolean;
-//       }>();
-
-//     if (!resource) return fail(req, { ok: false, code: "LID_NOT_FOUND" }, 404);
-
-//     const now = Math.floor(Date.now() / 1000);
-//     if (resource.disabled) return fail(req, { ok: false, code: "LID_DISABLED" }, 403);
-//     if (resource.expiresAt && resource.expiresAt > 0 && resource.expiresAt < now) {
-//       return fail(req, { ok: false, code: "LID_EXPIRED" }, 410);
-//     }
-
-//     return ok(req, {
-//       ok: true,
-//       lid,
-//       aid: resource.aid,
-//       basicId: resource.basicId ?? null,
-//       formUrl: resource.formUrl,
-//       formId: resource.formId ?? null,
-//       title: resource.title ?? null,
-//       desc: resource.desc ?? null,
-//       notify: Number(resource.notify ?? 0),
-//     });
-//   } catch (err: any) {
-//     const status = err?.status ?? 500;
-//     return fail(req, { ok: false, code: err?.message || "LINKS_READ_FAILED" }, status);
-//   }
-// }
-
 // app/api/links/[lid]/route.ts
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 
-export async function GET(_req: Request, context: any) {
+// ---- 型（Cosmosの実体に合わせて適宜拡張OK）----
+type LinkDoc = {
+  id: string;           // = lid（パーティションキー）
+  formUrl: string;
+  title?: string;
+  desc?: string;
+  notify?: number | boolean;
+  entry?: string;       // "entry.XXXX" でも "XXXX" でも可（受け取ったら正規化）
+  liffId?: string;      // 可変を想定
+  expiresAt?: number;   // epoch ms（任意）
+  // 任意で保持している補助情報（必要なら出す）
+  aid?: string;
+  basicId?: string;
+  formId?: string;
+};
+
+// ---- ユーティリティ ----
+const toBooleanNumber = (v: unknown) => (v === true || v === 1 || v === "1" ? 1 : 0);
+const normalizeEntry = (entry?: string | null) => {
+  if (!entry) return undefined;
+  return entry.startsWith("entry.") ? entry : `entry.${entry}`;
+};
+/** GoogleフォームURLを /viewform に正規化（余計なクエリ除去） */
+const normalizeGoogleFormViewUrl = (url: string) => {
   try {
-    const lid = (context?.params?.lid ?? "").trim();
+    const u = new URL(url);
+    // /viewform で終わる形に寄せる（/formResponse等が来ても丸める）
+    const paths = u.pathname.split("/");
+    const last = paths[paths.length - 1];
+    if (last !== "viewform") {
+      paths[paths.length - 1] = "viewform";
+      u.pathname = paths.join("/");
+    }
+    // 既存のクエリは基本不要（usp などはクライアント側で付与）
+    u.search = "";
+    return u.toString();
+  } catch {
+    return url;
+  }
+};
+
+export async function GET(req: NextRequest, ctx: { params: { lid?: string } }) {
+  try {
+    const lid = (ctx?.params?.lid ?? "").trim();
     if (!lid) {
       return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
     }
 
-    const { resource } = await getLinksByIdContainer().item(lid, lid).read<any>();
+    // Cosmos から取得
+    const { resource } = await getLinksByIdContainer().item(lid, lid).read<LinkDoc>();
     if (!resource) {
       return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
     }
 
-    const { aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry, liffId } = resource;
-    return NextResponse.json(
-      { ok: true, aid, basicId, formUrl, formId, title, desc, notify, expiresAt, entry, liffId },
-      { status: 200 }
-    );
+    // 有効期限チェック（任意）
+    if (typeof resource.expiresAt === "number" && resource.expiresAt > 0) {
+      if (Date.now() > resource.expiresAt) {
+        return NextResponse.json({ ok: false, code: "LINK_EXPIRED" }, { status: 410 });
+      }
+    }
+
+    // クエリからの上書き（LIFF_ID は変動前提：?liff= / ?liffId= が来たら優先）
+    const q = req.nextUrl.searchParams;
+    const liffFromQuery = q.get("liff") || q.get("liffId") || undefined;
+
+    // 正規化
+    const formUrl = normalizeGoogleFormViewUrl(resource.formUrl);
+    const entry = normalizeEntry(q.get("entry") ?? resource.entry ?? undefined);
+    const notify = toBooleanNumber(resource.notify);
+
+    // LIFF_ID の決定順：クエリ > DB > 環境変数（保険）
+    const liffId =
+      (liffFromQuery as string | undefined) ||
+      (resource.liffId || undefined) ||
+      (process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID || undefined);
+
+    // 最小＆安全なレスポンス（機微情報は出さない）
+    const body = {
+      ok: true,
+      title: resource.title || "Googleフォーム",
+      desc: resource.desc || "",
+      formUrl,
+      entry,       // 例: "entry.1969076360"（未設定なら undefined）
+      notify,      // 0 or 1
+      liffId,      // ★ここが変動してもOK（未設定なら undefined）
+      // 必要なら下記を活かす（UIで使うなら）
+      // aid: resource.aid ?? undefined,
+      // basicId: resource.basicId ?? undefined,
+      // formId: resource.formId ?? undefined,
+      // expiresAt: resource.expiresAt ?? undefined,
+    };
+
+    const res = NextResponse.json(body, { status: 200 });
+    // キャッシュ禁止（LIFF_IDの変動に即追従）
+    res.headers.set("Cache-Control", "no-store");
+    return res;
   } catch (e) {
     return NextResponse.json({ ok: false, code: "LINKS_READ_FAILED" }, { status: 500 });
   }
