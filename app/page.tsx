@@ -494,7 +494,8 @@ export default function Home() {
 
         setIsGeneratingUrl(true);
         try {
-          const userId = userProfile?.userId || 'anonymous';
+          const userId = userProfile!.userId;
+          // const userId = userProfile?.userId || 'anonymous';
           // const url = await generatePrefillUrl(formUrl, userProfile.userId);
           // setGeneratedUrl(url);
           const url = await generatePrefillUrl(formUrl, userId);
