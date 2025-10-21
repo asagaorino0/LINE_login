@@ -23,29 +23,45 @@ export default function OpenFormClient() {
           throw new Error(code);
         }
 
-        // 2) LIFF ID の決定（URL > link.liffId > env）
+        // 2) LIFF ID 決定
         const liffFromQuery = qs.get("liff") || qs.get("liffId");
         const liffToUse = (liffFromQuery || link.liffId || undefined) as string | undefined;
-        if (!liffToUse) {
-          throw new Error("LIFF ID が未設定です。URLに &liff=... を付けるか、link.liffId を保存してください。");
-        }
+        if (!liffToUse) throw new Error("LIFF ID が未設定です。URLに &liff=... を付けるか、link.liffId を保存してください。");
 
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        if (!liffManager.isLoggedIn()) {
-          // 現在URLに liffId を付けて戻す（liff.ts 内でも付け直しますが念のため）
-          const back = new URL(location.href);
-          back.searchParams.set("liffId", liffToUse);
-          await liffManager.login({ redirectUri: back.toString() });
-          return;
+        // ===== ここが重要！ =====
+        const isInClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
+
+        const loggedIn = liffManager.isLoggedIn();
+
+        // 無限ループ防止フラグ（リダイレクト直後のワンショット）
+        const onceFlagKey = "liffLoginOnce";
+        const alreadyRedirected = sessionStorage.getItem(onceFlagKey) === "1";
+
+        // in-client なら login() しない
+        if (!isInClient && !loggedIn) {
+          if (!alreadyRedirected) {
+            const back = new URL(location.href);
+            // 戻り先に liffId を明示
+            back.searchParams.set("liffId", liffToUse);
+            sessionStorage.setItem(onceFlagKey, "1"); // 一度だけ
+            await liffManager.login({ redirectUri: back.toString() });
+            return; // ここで制御戻らない
+          } else {
+            // すでに戻ってきているのに loggedIn=false → 何かがブロックされている（外部ブラウザ/サードパーティCookie等）
+            // ここでは先に進まずエラー表示
+            throw new Error("LINEログインセッションを確立できませんでした。LINEアプリ内で開くか、ブラウザのトラッキング防止設定を見直してください。");
+          }
         }
 
-        // 3) ユーザー保存（Cookie要るなら /api/line-admin もここで）
+        // 3) ユーザー保存
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
 
-        // （任意）管理者Cookie化が必要なら：await fetch("/api/line-admin", { method:"POST", body: JSON.stringify({...}) })
         await fetch("/api/line-users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -60,7 +76,7 @@ export default function OpenFormClient() {
         // 4) フォームURL → view に正規化
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
 
-        // 5) entry 決定（URL > link.entry > 自動検出）
+        // 5) entry 決定
         const entryFromUrl = qs.get("entry");
         let userEntry: string | null = null;
         if (entryFromUrl) {
@@ -105,7 +121,8 @@ export default function OpenFormClient() {
           } catch { /* ignore */ }
         }
 
-        // 8) 遷移
+        // 8) 遷移（フラグはここでクリア）
+        sessionStorage.removeItem(onceFlagKey);
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
