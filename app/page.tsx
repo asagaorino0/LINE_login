@@ -494,11 +494,14 @@ export default function Home() {
 
         setIsGeneratingUrl(true);
         try {
-          const userId = userProfile!.userId;
+          // const userId = userProfile!.userId;
           // const userId = userProfile?.userId || 'anonymous';
-          // const url = await generatePrefillUrl(formUrl, userProfile.userId);
-          // setGeneratedUrl(url);
-          const url = await generatePrefillUrl(formUrl, userId);
+          if (!userProfile?.userId) {
+            // in-client での LIFF ログイン or /open 経由に誘導する
+            throw new Error("UID 未取得のため、LINEアプリ内で開いてから実行してください。");
+          }
+          const url = await generatePrefillUrl(formUrl, userProfile.userId);
+          // const url = await generatePrefillUrl(formUrl, userId);
           setGeneratedUrl(url);
         } catch (e) {
           console.error('URL generation failed:', e);
