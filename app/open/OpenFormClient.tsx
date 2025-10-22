@@ -4,37 +4,39 @@ import { useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
+const ONCE_KEY = "redirectedToLiff";
+
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
   const sentRef = useRef(false);
+  const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  // 通知送信（fetch 本線 / beacon フォールバック / 少し待つ）
+  // ★ 追加：通知送信を関数化（必ず待つ・認証つき・遷移前に猶予）
   async function sendNotifyCard(payload: any) {
     try {
-      let ok = false;
-      try {
-        const r = await fetch("/api/line", {
+      // 1) まず sendBeacon を試す
+      let beaconed = false;
+      if ("sendBeacon" in navigator) {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        beaconed = navigator.sendBeacon("/api/line", blob);
+      }
+
+      // 2) 失敗/未対応なら fetch + keepalive + credentials
+      if (!beaconed) {
+        await fetch("/api/line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true,
-          credentials: "include",
+          credentials: "include", // ★ サーバがセッション/クッキーを見る構成に対応
         });
-        ok = r.ok;
-        if (!r.ok) {
-          const text = await r.text().catch(() => "");
-          console.warn("[notify] fetch failed:", r.status, text);
-        }
-      } catch (e) {
-        console.warn("[notify] fetch threw:", e);
       }
-      if (!ok && "sendBeacon" in navigator) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        ok = navigator.sendBeacon("/api/line", blob);
-      }
-      await new Promise((r) => setTimeout(r, ok ? 400 : 900));
+
+      // 3) iOS/Safari/一部 WebView 対策で少し待つ（500–800ms 推奨）
+      await new Promise((r) => setTimeout(r, 600));
     } catch (e) {
+      // 通知失敗でもフォーム遷移は続行したいので握りつぶす
       console.warn("[notify] failed:", e);
     }
   }
@@ -43,83 +45,110 @@ export default function OpenFormClient() {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
-
-        // --- 必須: lid ---
-        const lid = (qs.get("lid") || "").trim();
+        const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        // --- 1) リンク情報 ---
-        const linkResp = await fetch(`/api/links/${encodeURIComponent(lid)}`, { credentials: "include" });
+        // 1) /api/links
+        const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        // --- 2) LIFF ID（URL > link.liffId > env）---
-        const liffIdFromQuery = (qs.get("liff") || qs.get("liffId") || "").trim();
-        const liffToUse =
-          liffIdFromQuery ||
-          (typeof link.liffId === "string" ? link.liffId : "") ||
-          (process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID || "");
+        // 2) LIFF ID
+        const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
+        const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
+
+        setLiffIdForButton(liffToUse);
 
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        // --- 3) LINE アプリ内か？ ---
-        const inClient =
-          typeof (window as any).liff?.isInClient === "function"
-            ? (window as any).liff.isInClient()
-            : (liffManager as any).isInClient?.() ?? false;
+        // 3) in-client 判定
+        const inClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
 
-        // in-client かつ未ログインならサイレント SSO（prompt:none）
-        if (inClient && !(window as any).liff?.isLoggedIn?.()) {
-          await (window as any).liff.login({ redirectUri: location.href, prompt: "none" });
-          return; // ここでリダイレクト→復帰後に以下が続行
+        // 3.5) in-client でない → ユニバーサルリンクへ自動遷移（ループ防止あり）
+        if (!inClient) {
+          const already = sessionStorage.getItem(ONCE_KEY) === "1";
+          if (!already) {
+            sessionStorage.setItem(ONCE_KEY, "1");
+            // いまのクエリをそのまま引き継ぐ
+            const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+            location.replace(universal);
+            return;
+          } else {
+            // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
+            setShowOpenInLine(true);
+            return;
+          }
         }
+        // in-client で再入場できたのでフラグをクリア
+        sessionStorage.removeItem(ONCE_KEY);
 
-        // --- 4) プロフィール（in-client ならUIDが取れる）---
-        const profile = await liffManager.getProfile().catch(() => null);
-        const uid = profile?.userId || "";
+        // 4) プロフィール取得（in-clientなのでログイン画面は出ない）
+        const profile = await liffManager.getProfile();
+        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
 
-        // --- 5) Google フォーム URL（view に正規化）---
+        await fetch("/api/line-users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            lineUserId: profile.userId,
+            displayName: profile.displayName,
+            pictureUrl: profile.pictureUrl ?? null,
+          }),
+        });
+
+        // 5) GoogleフォームURL & entry
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
-        const baseForm = viewUrl.split("?")[0];
-
-        // --- 6) entry は “必ず URL からのみ取得” ---
-        // 例: ?entry=entry.1587760013 または ?entry=1587760013 どちらも許可
-        const entryRaw = (qs.get("entry") || "").trim();
-        let entryKey: string | null = null;
-        if (entryRaw) {
-          entryKey = entryRaw.startsWith("entry.") ? entryRaw : `entry.${entryRaw}`;
-          // 明らかに不正な値は破棄
-          if (!/^entry\.\d{5,}$/.test(entryKey)) entryKey = null;
+        const entryFromUrl = qs.get("entry");
+        let userEntry: string | null = null;
+        if (entryFromUrl) {
+          userEntry = entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`;
+        } else if (link.entry) {
+          userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
+        } else {
+          const det = await GoogleFormsManager.detectEntryIds(viewUrl).catch(() => null);
+          if (det?.success && det.userId) userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
+          if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
 
-        // --- 7) プリフィル URL の構築（URL の entry と UID が両方揃ったときのみ）---
-        const prefill =
-          uid && entryKey
-            ? `${baseForm}?usp=pp_url&${entryKey}=${encodeURIComponent(uid)}`
-            : baseForm;
+        // 6) prefill
+        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // --- 8) 通知（ON かつ UID あり のときのみ）---
-        if (!sentRef.current && Number(link.notify) === 1 && uid) {
+        // 7) 通知（任意）
+        if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
-            userId: uid,
+            userId: profile.userId,
             type: "card" as const,
             formUrl: prefill,
             title: link.title || "Googleフォーム",
-            desc:
-              link.desc ||
-              "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
+            desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
             bgcolor: link.bgcolor,
             lid,
           };
-          await sendNotifyCard(payload);
+          try {
+            let sent = false;
+            if ("sendBeacon" in navigator) {
+              const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+              sent = navigator.sendBeacon("/api/line", blob);
+            }
+            if (!sent) {
+              await fetch("/api/line", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              });
+            }
+          } catch { /* ignore */ }
         }
 
-        // --- 9) 遷移 ---
-        // （prefill に UID が入っていなければ、そのまま base に飛ぶ）
-        setTimeout(() => location.replace(prefill), 120);
+        // 8) 遷移
+        setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));
@@ -127,12 +156,17 @@ export default function OpenFormClient() {
     })();
   }, []);
 
-  // “LINEで開く”保険（URL の liff をそのまま使う）
+  // 保険：手動で「LINEで開く」
   const openInLine = () => {
-    const sp = new URLSearchParams(location.search);
-    const liffId = (sp.get("liff") || sp.get("liffId") || "").trim();
-    if (!liffId) return alert("LIFF ID 不明です");
-    const universal = `https://liff.line.me/${encodeURIComponent(liffId)}${location.search || ""}`;
+    const qs = location.search || "";
+    // ★ クエリ優先＋無ければ state の liffIdForButton を使う
+    const fromQuery = new URLSearchParams(qs).get("liff") || new URLSearchParams(qs).get("liffId");
+    const id = fromQuery || liffIdForButton;
+    if (!id) {
+      alert("LIFF ID が特定できません（URLかリンク設定をご確認ください）");
+      return;
+    }
+    const universal = `https://liff.line.me/${encodeURIComponent(id)}${qs}`;
     if ((window as any).liff?.openWindow) {
       (window as any).liff.openWindow({ url: universal, external: false });
     } else {
@@ -145,7 +179,9 @@ export default function OpenFormClient() {
       {showOpenInLine ? (
         <div className="text-center space-y-3">
           <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
-          <p className="text-xs text-gray-500">LINEアプリで開くとユーザー情報を自動反映できます。</p>
+          <p className="text-xs text-gray-500">
+            自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。
+          </p>
           <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
             LINEで開く
           </button>
@@ -154,6 +190,7 @@ export default function OpenFormClient() {
         <div className="text-center max-w-md">
           <div className="text-red-600 mb-2">エラーが発生しました</div>
           <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
+          <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
         </div>
       ) : (
         <div className="text-center">
