@@ -38,17 +38,19 @@ type LiffSettingsResp = {
 const LIFF_ID_RE = /^\d{6,}-[A-Za-z0-9_-]+$/;
 
 // URL末尾やクエリからフォールバックLIFF IDを取得
-const FALLBACK_LIFF_ID = (() => {
-  if (typeof window === 'undefined') return '';
-  const url = new URL(window.location.href);
-  const fromQuery = url.searchParams.get('liff');
-  if (fromQuery) return fromQuery;
-  const pathParts = url.pathname.split('/');
-  const lastPart = pathParts[pathParts.length - 1];
-  if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
-  return '';
-})();
 
+function getFallbackLiffId(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const url = new URL(window.location.href);
+    const fromQuery = url.searchParams.get('liff');
+    if (fromQuery) return fromQuery;
+    const pathParts = url.pathname.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
+  } catch { }
+  return '';
+}
 /* ------------------------------ Zod Schemas -------------------------------- */
 
 const liffIdSchema = z.object({
@@ -199,13 +201,19 @@ export default function Home() {
   }, []);
 
   // LIFF 初期化（URL / フォーム / サーバ設定 / ENV / フォールバックの優先順）
+  function getSearchParams(): URLSearchParams {
+    if (typeof window === 'undefined') return new URLSearchParams('');
+    return new URLSearchParams(window.location.search ?? '');
+  }
+
   const resolveLiffId = (): string | undefined => {
-    const sp = new URLSearchParams(location.search);
+    const sp = getSearchParams();
     const fromUrl = sp.get('liff') || sp.get('liffId') || undefined;
     const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
     const fromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
     const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
-    return fromForm || fromUrl || fromServer || fromEnv || FALLBACK_LIFF_ID;
+    const fallback = getFallbackLiffId();
+    return fromForm || fromUrl || fromServer || fromEnv || fallback;
   };
 
   const ensureLiffReady = async (): Promise<boolean> => {
@@ -213,13 +221,6 @@ export default function Home() {
     // ★ init はログインを誘発しないため残す
     return await liffManager.init({ liffId: id });
   };
-
-  // const [adminReady, setAdminReady] = useState(false); // ★ 不使用（管理者ログインなし）
-
-  useEffect(() => {
-    // sessionStorage.removeItem('adminReady'); // ★ 不使用
-    // setAdminReady(false);                    // ★ 不使用
-  }, []);
 
   // 初回起動
   useEffect(() => {
@@ -295,8 +296,14 @@ export default function Home() {
 
   // URLパラメータまたはサーバー設定からLIFF IDをフォームに自動入力
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    const liffIdFromUrl = sp.get('liff') || sp.get('liffId');
+    // const sp = new URLSearchParams(window.location.search);
+    // const liffIdFromUrl = sp.get('liff') || sp.get('liffId');
+    const liffIdFromUrl = (() => {
+      if (typeof window === 'undefined') return '';
+      const sp = new URLSearchParams(window.location.search ?? '');
+      return sp.get('liff') || sp.get('liffId') || '';
+    })();
+
     if (liffIdFromUrl) {
       liffIdForm.setValue('liffId', liffIdFromUrl);
     } else if (liffSettingsQuery.data?.success && liffSettingsQuery.data.liffId) {
@@ -623,17 +630,20 @@ export default function Home() {
   };
 
   /* ---- プレビューURL（通知UIは使わないがプレビューは残す） ---- */
-  const previewUrl = useMemo(() => {
-    if (!viewUrlNormalized) return '';
-    const params = new URLSearchParams({
-      form: viewUrlNormalized,
-      title: formTitle || '',
-      desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
-      notify: '0',
-      v: String(Date.now()),
-    });
-    return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  }, [viewUrlNormalized, formTitle, formDescription]);
+  // const previewUrl = useMemo(() => {
+  //   if (!viewUrlNormalized) return '';
+  //   const origin = getOrigin();
+  //   if (!origin) return ''; // SSR/ビルド中は空を返す
+  //   const params = new URLSearchParams({
+  //     form: viewUrlNormalized,
+  //     title: formTitle || '',
+  //     desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
+  //     notify: '0',
+  //     v: String(Date.now()),
+  //   });
+  //   return `${origin}/api/link-preview?${params.toString()}`;
+  // }, [viewUrlNormalized, formTitle, formDescription]);
+
 
   /* --------------------------------- UI ------------------------------------ */
 
@@ -650,14 +660,19 @@ export default function Home() {
     );
   }
 
-  const sp = new URLSearchParams(window.location.search);
-  const liffIdFromUrl = sp.get('liff') || sp.get('liffId');
+  const liffIdFromUrl = (() => {
+    if (typeof window === 'undefined') return '';
+    const sp = new URLSearchParams(window.location.search ?? '');
+    return sp.get('liff') || sp.get('liffId') || '';
+  })();
+
   const liffIdFromForm = liffIdForm.watch('liffId');
-  const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || FALLBACK_LIFF_ID;
-  // ↓ これを追加（hasLiffId は truthy チェック用に残し、実際に使う文字列は currentLiffId に統一）
+  const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || getFallbackLiffId();
+
   const currentLiffId = String(
-    liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || FALLBACK_LIFF_ID || ''
+    liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || getFallbackLiffId() || ''
   );
+
   type LiffIdFormData = { liffId: string };
 
   const onLiffIdSubmit: SubmitHandler<LiffIdFormData> = (data) => {
