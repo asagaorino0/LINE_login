@@ -38,42 +38,43 @@ const LIFF_ID_RE = /^\d{6,}-[A-Za-z0-9_-]+$/;
 
 // 追加//////////////////////////////////////////
 // // URL末尾やクエリからフォールバックLIFF IDを取得
+// ✅ 関数化（安全）
 function getFallbackLiffId(): string {
   if (typeof window === 'undefined') return '';
   try {
     const url = new URL(window.location.href);
     const fromQuery = url.searchParams.get('liff');
     if (fromQuery) return fromQuery;
-    const pathParts = url.pathname.split('/');
-    const lastPart = pathParts[pathParts.length - 1];
-    if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
+    const last = url.pathname.split('/').pop() || '';
+    if (/^[0-9A-Za-z-]+$/.test(last)) return last;
   } catch { }
   return '';
 }
+
 ////////////////////////////////////////////
 // ★ 指定の固定フォールバック
 // const FALLBACK_LIFF_ID = new URLSearchParams(window.location.search).get('liff') || '';
 // ✅ URLの末尾やクエリから動的に LIFF ID を取得し、FALLBACK_LIFF_ID に代入
 // 前のやつ
-const FALLBACK_LIFF_ID = (() => {
-  if (typeof window === 'undefined') return ''; // SSR対策
+// const FALLBACK_LIFF_ID = (() => {
+//   if (typeof window === 'undefined') return ''; // SSR対策
 
-  const url = new URL(window.location.href);
+//   const url = new URL(window.location.href);
 
-  // ① クエリパラメータ ?liff=xxxx の場合
-  const fromQuery = url.searchParams.get('liff');
-  if (fromQuery) return fromQuery;
+//   // ① クエリパラメータ ?liff=xxxx の場合
+//   const fromQuery = url.searchParams.get('liff');
+//   if (fromQuery) return fromQuery;
 
-  // ② URLの末尾が xxxx の場合（例: /open/2008088055-gKXl6W1p）
-  const pathParts = url.pathname.split('/');
-  const lastPart = pathParts[pathParts.length - 1];
-  if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
+//   // ② URLの末尾が xxxx の場合（例: /open/2008088055-gKXl6W1p）
+//   const pathParts = url.pathname.split('/');
+//   const lastPart = pathParts[pathParts.length - 1];
+//   if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
 
-  // ③ 該当なし
-  return '';
-})();
+//   // ③ 該当なし
+//   return '';
+// })();
 
-console.log('FALLBACK_LIFF_ID:', FALLBACK_LIFF_ID);
+// console.log('FALLBACK_LIFF_ID:', FALLBACK_LIFF_ID);
 
 
 /* ------------------------------ Zod Schemas -------------------------------- */
@@ -234,7 +235,9 @@ export default function Home() {
     const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
     const fromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
     const fromEnv = process.env.NEXT_PUBLIC_LIFF_ID || undefined;
-    return fromForm || fromUrl || fromServer || fromEnv || FALLBACK_LIFF_ID;
+    // return fromForm || fromUrl || fromServer || fromEnv || FALLBACK_LIFF_ID;
+    const fallback = getFallbackLiffId();
+    return fromForm || fromUrl || fromServer || fromEnv || fallback;
   };
 
   const ensureLiffReady = async (): Promise<boolean> => {
@@ -937,8 +940,14 @@ export default function Home() {
       </div>
     );
   }
-  const sp = new URLSearchParams(window.location.search);
-  const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+  // const sp = new URLSearchParams(window.location.search);
+  // const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+  const liffIdFromUrl = (() => {
+    if (typeof window === 'undefined') return '';
+    const sp = new URLSearchParams(window.location.search ?? '');
+    return sp.get('liff') || sp.get('liffId') || '';
+  })();
+
   const liffIdFromForm = liffIdForm.watch('liffId');
   // const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || FALLBACK_LIFF_ID;
   // 追加//////////////////////////////////////
