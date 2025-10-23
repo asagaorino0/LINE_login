@@ -88,7 +88,7 @@ export default function OpenFormClient() {
             }
           } else {
             // // ★ PC：遷移しない。案内のみ表示
-            // setPcOnlyNotice(true);
+            setPcOnlyNotice(true);
             // setErr(null); // エラー枠は出さない
             // return;
             const already = sessionStorage.getItem(ONCE_KEY) === "1";
@@ -169,7 +169,6 @@ export default function OpenFormClient() {
             }
           } catch { /* ignore */ }
         }
-
         // 8) 遷移
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
