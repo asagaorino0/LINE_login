@@ -20,27 +20,27 @@ export default function OpenFormClient() {
   const sentRef = useRef(false);
   const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  async function sendNotifyCard(payload: any) {
-    try {
-      let beaconed = false;
-      if ("sendBeacon" in navigator) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        beaconed = navigator.sendBeacon("/api/line", blob);
-      }
-      if (!beaconed) {
-        await fetch("/api/line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          credentials: "include",
-        });
-      }
-      await new Promise((r) => setTimeout(r, 600));
-    } catch (e) {
-      console.warn("[notify] failed:", e);
-    }
-  }
+  // async function sendNotifyCard(payload: any) {
+  //   try {
+  //     let beaconed = false;
+  //     if ("sendBeacon" in navigator) {
+  //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  //       beaconed = navigator.sendBeacon("/api/line", blob);
+  //     }
+  //     if (!beaconed) {
+  //       await fetch("/api/line", {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify(payload),
+  //         keepalive: true,
+  //         credentials: "include",
+  //       });
+  //     }
+  //     await new Promise((r) => setTimeout(r, 600));
+  //   } catch (e) {
+  //     console.warn("[notify] failed:", e);
+  //   }
+  // }
 
   useEffect(() => {
     (async () => {
@@ -65,10 +65,9 @@ export default function OpenFormClient() {
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
         // 3) in-client 判定
-        const inClient =
-          typeof (window as any).liff?.isInClient === "function"
-            ? (window as any).liff.isInClient()
-            : (liffManager as any).isInClient?.() ?? false;
+        const inClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
 
         // 3.5) in-client でない場合の分岐を端末別に変更
         if (!inClient) {
@@ -88,10 +87,22 @@ export default function OpenFormClient() {
               return;
             }
           } else {
-            // ★ PC：遷移しない。案内のみ表示
-            setPcOnlyNotice(true);
-            setErr(null); // エラー枠は出さない
-            return;
+            // // ★ PC：遷移しない。案内のみ表示
+            // setPcOnlyNotice(true);
+            // setErr(null); // エラー枠は出さない
+            // return;
+            const already = sessionStorage.getItem(ONCE_KEY) === "1";
+            if (!already) {
+              sessionStorage.setItem(ONCE_KEY, "1");
+              // いまのクエリをそのまま引き継ぐ
+              const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+              location.replace(universal);
+              return;
+            } else {
+              // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
+              setShowOpenInLine(true);
+              return;
+            }
           }
         }
 
@@ -188,38 +199,40 @@ export default function OpenFormClient() {
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
-      {pcOnlyNotice ? (
-        <div className="text-center space-y-3">
-          <div className="text-gray-800 font-semibold">このページはパソコンでは実行できません</div>
-          <p className="text-xs text-gray-500">
-            お手数ですが、<span className="font-medium">スマホの LINE から本リンクを開いて</span>実行してください。
-          </p>
-          <div className="text-[11px] text-gray-400">
-            （スマホで開くと自動でフォームに遷移します）
+      {
+        // pcOnlyNotice ? (
+        // <div className="text-center space-y-3">
+        //   <div className="text-gray-800 font-semibold">このページはパソコンでは実行できません</div>
+        //   <p className="text-xs text-gray-500">
+        //     お手数ですが、<span className="font-medium">スマホの LINE から本リンクを開いて</span>実行してください。
+        //   </p>
+        //   <div className="text-[11px] text-gray-400">
+        //     （スマホで開くと自動でフォームに遷移します）
+        //   </div>
+        // </div>
+        // ) :
+        showOpenInLine ? (
+          <div className="text-center space-y-3">
+            <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
+            <p className="text-xs text-gray-500">
+              自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。
+            </p>
+            <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
+              LINEで開く
+            </button>
           </div>
-        </div>
-      ) : showOpenInLine ? (
-        <div className="text-center space-y-3">
-          <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
-          <p className="text-xs text-gray-500">
-            自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。
-          </p>
-          <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
-            LINEで開く
-          </button>
-        </div>
-      ) : err ? (
-        <div className="text-center max-w-md">
-          <div className="text-red-600 mb-2">エラーが発生しました</div>
-          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
-          <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
-        </div>
-      ) : (
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
-          <div>フォームへ遷移中…</div>
-        </div>
-      )}
+        ) : err ? (
+          <div className="text-center max-w-md">
+            <div className="text-red-600 mb-2">エラーが発生しました</div>
+            <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
+            <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
+            <div>フォームへ遷移中…</div>
+          </div>
+        )}
     </div>
   );
-}
+} 
