@@ -6,37 +6,38 @@ import { GoogleFormsManager } from "@/lib/googleForms";
 
 const ONCE_KEY = "redirectedToLiff";
 
+function isMobileLike() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  // iOS/Android/一部のモバイル UA を判定
+  return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
+}
+
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
+  const [pcOnlyNotice, setPcOnlyNotice] = useState(false); // ★ 追加：PC 向け案内
   const sentRef = useRef(false);
   const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  // ★ 追加：通知送信を関数化（必ず待つ・認証つき・遷移前に猶予）
   async function sendNotifyCard(payload: any) {
     try {
-      // 1) まず sendBeacon を試す
       let beaconed = false;
       if ("sendBeacon" in navigator) {
         const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
         beaconed = navigator.sendBeacon("/api/line", blob);
       }
-
-      // 2) 失敗/未対応なら fetch + keepalive + credentials
       if (!beaconed) {
         await fetch("/api/line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true,
-          credentials: "include", // ★ サーバがセッション/クッキーを見る構成に対応
+          credentials: "include",
         });
       }
-
-      // 3) iOS/Safari/一部 WebView 対策で少し待つ（500–800ms 推奨）
       await new Promise((r) => setTimeout(r, 600));
     } catch (e) {
-      // 通知失敗でもフォーム遷移は続行したいので握りつぶす
       console.warn("[notify] failed:", e);
     }
   }
@@ -64,25 +65,36 @@ export default function OpenFormClient() {
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
         // 3) in-client 判定
-        const inClient = typeof (window as any).liff?.isInClient === "function"
-          ? (window as any).liff.isInClient()
-          : (liffManager as any).isInClient?.() ?? false;
+        const inClient =
+          typeof (window as any).liff?.isInClient === "function"
+            ? (window as any).liff.isInClient()
+            : (liffManager as any).isInClient?.() ?? false;
 
-        // 3.5) in-client でない → ユニバーサルリンクへ自動遷移（ループ防止あり）
+        // 3.5) in-client でない場合の分岐を端末別に変更
         if (!inClient) {
+          const mobile = isMobileLike();
           const already = sessionStorage.getItem(ONCE_KEY) === "1";
-          if (!already) {
-            sessionStorage.setItem(ONCE_KEY, "1");
-            // いまのクエリをそのまま引き継ぐ
-            const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
-            location.replace(universal);
-            return;
+
+          if (mobile) {
+            // ★ スマホ：従来どおりユニバーサルリンクへ一度だけ自動遷移
+            if (!already) {
+              sessionStorage.setItem(ONCE_KEY, "1");
+              const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+              location.replace(universal);
+              return;
+            } else {
+              // ループ防止後は「LINEで開く」ボタンを出す（従来の保険）
+              setShowOpenInLine(true);
+              return;
+            }
           } else {
-            // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
-            setShowOpenInLine(true);
+            // ★ PC：遷移しない。案内のみ表示
+            setPcOnlyNotice(true);
+            setErr(null); // エラー枠は出さない
             return;
           }
         }
+
         // in-client で再入場できたのでフラグをクリア
         sessionStorage.removeItem(ONCE_KEY);
 
@@ -151,15 +163,15 @@ export default function OpenFormClient() {
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
-        setErr(e?.message || String(e));
+        // PC 専用案内を優先している場合は err を出さない
+        if (!pcOnlyNotice) setErr(e?.message || String(e));
       }
     })();
-  }, []);
+  }, [pcOnlyNotice]);
 
   // 保険：手動で「LINEで開く」
   const openInLine = () => {
     const qs = location.search || "";
-    // ★ クエリ優先＋無ければ state の liffIdForButton を使う
     const fromQuery = new URLSearchParams(qs).get("liff") || new URLSearchParams(qs).get("liffId");
     const id = fromQuery || liffIdForButton;
     if (!id) {
@@ -176,7 +188,17 @@ export default function OpenFormClient() {
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
-      {showOpenInLine ? (
+      {pcOnlyNotice ? (
+        <div className="text-center space-y-3">
+          <div className="text-gray-800 font-semibold">このページはパソコンでは実行できません</div>
+          <p className="text-xs text-gray-500">
+            お手数ですが、<span className="font-medium">スマホの LINE から本リンクを開いて</span>実行してください。
+          </p>
+          <div className="text-[11px] text-gray-400">
+            （スマホで開くと自動でフォームに遷移します）
+          </div>
+        </div>
+      ) : showOpenInLine ? (
         <div className="text-center space-y-3">
           <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
           <p className="text-xs text-gray-500">
