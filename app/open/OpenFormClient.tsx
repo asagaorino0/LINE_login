@@ -5,10 +5,6 @@ import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
 const ONCE_KEY = "redirectedToLiff";
-const FORM_REDIRECTED_KEY = "redirectedToForm";
-
-const CLOSE_RETRY_MS = 400;     // リトライ間隔
-const CLOSE_RETRY_MAX = 25;     // 最大リトライ回数 (約10秒)
 
 function isMobileLike() {
   if (typeof navigator === "undefined") return false;
@@ -24,27 +20,27 @@ export default function OpenFormClient() {
   const sentRef = useRef(false);
   const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  // async function sendNotifyCard(payload: any) {
-  //   try {
-  //     let beaconed = false;
-  //     if ("sendBeacon" in navigator) {
-  //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-  //       beaconed = navigator.sendBeacon("/api/line", blob);
-  //     }
-  //     if (!beaconed) {
-  //       await fetch("/api/line", {
-  //         method: "POST",
-  //         headers: { "Content-Type": "application/json" },
-  //         body: JSON.stringify(payload),
-  //         keepalive: true,
-  //         credentials: "include",
-  //       });
-  //     }
-  //     await new Promise((r) => setTimeout(r, 600));
-  //   } catch (e) {
-  //     console.warn("[notify] failed:", e);
-  //   }
-  // }
+  async function sendNotifyCard(payload: any) {
+    try {
+      let beaconed = false;
+      if ("sendBeacon" in navigator) {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        beaconed = navigator.sendBeacon("/api/line", blob);
+      }
+      if (!beaconed) {
+        await fetch("/api/line", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true,
+          credentials: "include",
+        });
+      }
+      await new Promise((r) => setTimeout(r, 600));
+    } catch (e) {
+      console.warn("[notify] failed:", e);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -52,26 +48,33 @@ export default function OpenFormClient() {
         const qs = new URLSearchParams(location.search);
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
+
         // 1) /api/links
         const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
+
         // 2) LIFF ID
         const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
         const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
+
         setLiffIdForButton(liffToUse);
+
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
+
         // 3) in-client 判定
         const inClient =
           typeof (window as any).liff?.isInClient === "function"
             ? (window as any).liff.isInClient()
             : (liffManager as any).isInClient?.() ?? false;
+
         // 3.5) in-client でない場合の分岐を端末別に変更
         if (!inClient) {
           const mobile = isMobileLike();
           const already = sessionStorage.getItem(ONCE_KEY) === "1";
+
           if (mobile) {
             // ★ スマホ：従来どおりユニバーサルリンクへ一度だけ自動遷移
             if (!already) {
@@ -91,11 +94,14 @@ export default function OpenFormClient() {
             return;
           }
         }
+
         // in-client で再入場できたのでフラグをクリア
         sessionStorage.removeItem(ONCE_KEY);
+
         // 4) プロフィール取得（in-clientなのでログイン画面は出ない）
         const profile = await liffManager.getProfile();
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
+
         await fetch("/api/line-users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -106,6 +112,7 @@ export default function OpenFormClient() {
             pictureUrl: profile.pictureUrl ?? null,
           }),
         });
+
         // 5) GoogleフォームURL & entry
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
         const entryFromUrl = qs.get("entry");
@@ -119,8 +126,10 @@ export default function OpenFormClient() {
           if (det?.success && det.userId) userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
           if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
+
         // 6) prefill
         const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
+
         // 7) 通知（任意）
         if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
@@ -149,8 +158,8 @@ export default function OpenFormClient() {
             }
           } catch { /* ignore */ }
         }
+
         // 8) 遷移
-        sessionStorage.setItem(FORM_REDIRECTED_KEY, "1"); // ★ 追加
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
@@ -176,96 +185,6 @@ export default function OpenFormClient() {
       location.href = universal;
     }
   };
-  useEffect(() => {
-    let timer: number | undefined;
-    let tries = 0;
-    let stopping = false;
-
-    const ensureLiffReady = async () => {
-      try {
-        // すでに初期化済みなら何もしない。未初期化でも例外なくスルー
-        if (!(window as any).liff?.getContext) {
-          // 画面で保持している liffId を使って再初期化を試行
-          const qs = new URLSearchParams(location.search);
-          const id =
-            qs.get("liff") ||
-            qs.get("liffId") ||
-            // state のボタン用IDがあればそれも
-            (typeof liffIdForButton === "string" ? liffIdForButton : undefined);
-          if (id) {
-            await liffManager.init({ liffId: id }).catch(() => void 0);
-          }
-        }
-      } catch { /* ignore */ }
-    };
-
-    const attemptClose = async () => {
-      tries++;
-      try {
-        await ensureLiffReady();
-
-        // まず LIFFで閉じる
-        const liffObj = (window as any).liff;
-        if (liffObj?.closeWindow) {
-          liffObj.closeWindow();
-        }
-
-        // フォールバック
-        window.close();
-
-        // さらに最終手段：about:blank へ（閉じられないブラウザ対策で画面消し）
-        if (tries === 2) {
-          location.replace("about:blank");
-        }
-      } catch { /* ignore */ }
-      if (tries >= CLOSE_RETRY_MAX) {
-        stopping = true;
-        clearInterval(timer);
-        // ここでフラグはクリアしておく（再表示させない）
-        sessionStorage.removeItem(FORM_REDIRECTED_KEY);
-      }
-    };
-    const shouldAutoClose = () => {
-      // フラグ or フォームから戻ってきた痕跡（referrer が Google Forms）
-      const flagged = sessionStorage.getItem(FORM_REDIRECTED_KEY) === "1";
-      const fromForms = document.referrer.includes("docs.google.com/forms");
-      return flagged || fromForms;
-    };
-    const startClosing = () => {
-      if (stopping) return;
-      if (!shouldAutoClose()) return;
-      // すぐ一発、以降はリトライ
-      attemptClose();
-      // iOS/Safari や一部WebViewは close が無視されることがあるので、数秒リトライ
-      timer = window.setInterval(attemptClose, CLOSE_RETRY_MS);
-    };
-    // ---- 復帰検知を強化 ----
-    const onPageShow = () => startClosing();                // BFCache 復帰
-    const onVisibility = () => {                            // タブ復帰
-      if (document.visibilityState === "visible") startClosing();
-    };
-    const onFocus = () => startClosing();                   // フォーカス復帰
-    const onPopState = () => startClosing();                // 履歴戻り
-    // マウント時にも判定（フォームから戻るパターンはここに来ることが多い）
-    startClosing();
-    window.addEventListener("pageshow", onPageShow);
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("pageshow", onPageShow);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("popstate", onPopState);
-    };
-    // liffIdForButton は ensureLiffReady の再初期化に使うため依存に含める
-  }, [liffIdForButton]);
-  const closingNow = typeof window !== "undefined" && sessionStorage.getItem(FORM_REDIRECTED_KEY) === "1";
-  if (closingNow) {
-    // すぐ消えるので白背景のままでOK（ローディングすら不要）
-    return <div />;
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
