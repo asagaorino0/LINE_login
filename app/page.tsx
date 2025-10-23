@@ -968,37 +968,37 @@ export default function Home() {
             <Howto onClick={() => { setIsTab('admin'); setIsAdmin(true); }} />
           )}
 
-          {/* ページャ */}
-          <div className="flex flex-row justify-center m-4">
-            <div className="px-2">
-              {isTab === 'top'
-                ? <button className="rounded-full h-5 w-5 bg-primary" />
-                : <button onClick={() => { setIsTab('top'); setIsAdmin(false); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>}
-            </div>
-            <div className="px-2">
-              {isTab === 'admin'
-                ? <button className="rounded-full h-5 w-5 bg-primary" />
-                : <button onClick={() => { setIsTab('admin'); setIsAdmin(true); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>}
-            </div>
-            <div className="px-2">
-              {isTab === 'secret'
-                ? <button className="rounded-full h-5 w-5 bg-primary" />
-                : <button onClick={() => { setIsTab('secret'); setIsAdmin(false); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>}
-            </div>
-            <div className="px-2">
-              {isTab === 'howto'
-                ? <button className="rounded-full h-5 w-5 bg-primary" />
-                : <button onClick={() => { setIsTab('howto'); setIsAdmin(false); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>}
-            </div>
-          </div>
+          {formUrl && isAutoMode ? null : (
+            <div className="flex flex-row justify-center m-4">
+              <div className="px-2">
+                {isTab === 'top'
+                  ? <button className="rounded-full h-5 w-5 bg-primary" />
+                  : <button onClick={() => { setIsTab('top'); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>}
+              </div>
+              <div className="px-2">
+                {isTab === 'admin'
+                  ? <button className="rounded-full h-5 w-5 bg-primary" />
+                  : <button onClick={() => { setIsTab('admin'); setIsAdmin(true); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>}
+              </div>
+              <div className="px-2">
+                {isTab === 'secret'
+                  ? <button className="rounded-full h-5 w-5 bg-primary" />
+                  : <button onClick={() => { setIsTab('secret'); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>}
+              </div>
+              <div className="px-2">
+                {isTab === 'howto'
+                  ? <button className="rounded-full h-5 w-5 bg-primary" />
+                  : <button onClick={() => { setIsTab('howto'); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>}
+              </div>
+            </div>)}
         </main>
 
         <footer className="max-w-md mx-auto px-4 py-6 text-center">
