@@ -730,7 +730,7 @@ export default function Home() {
         </header>
 
         <main className="mx-auto w-full px-4 pb-4 sm:max-w-2xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl">
-          {formUrl && isAutoMode && (
+          {/* {formUrl && isAutoMode && (
             isGeneratingUrl ? (
               <div className="text-center">
                 <h3 className="text-base font-semibold">
@@ -754,7 +754,7 @@ export default function Home() {
                 </p>
               </div>
             )
-          )}
+          )} */}
 
           {!isAutoMode && isTab !== 'secret' && isTab !== 'howto' && (
             <>
@@ -968,7 +968,31 @@ export default function Home() {
             <Howto onClick={() => { setIsTab('admin'); setIsAdmin(true); }} />
           )}
 
-          {formUrl && isAutoMode ? null : (
+          {formUrl && isAutoMode ? (
+            isGeneratingUrl ? (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームへ移動中...</span>
+                </h3>
+              </div>
+            ) : (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームに移動します…</span>
+                </h3>
+                <p className="text-sm mt-2">
+                  自動で開かない場合は
+                  {' '}
+                  <a
+                    href={(generatedUrl || formUrl) ?? '#'}
+                    className="text-blue-600 underline"
+                  >
+                    こちらをタップ
+                  </a>
+                </p>
+              </div>
+            )
+          ) : (
             <div className="flex flex-row justify-center m-4">
               <div className="px-2">
                 {isTab === 'top'
