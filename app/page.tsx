@@ -192,9 +192,35 @@ export default function Home() {
   // const messageSentRef = useRef(false);   // ★ 不使用
   // const navigatedRef = useRef(false);     // ★ 不使用
   const linkCtxRef = useRef<{ lid?: string; aid?: string } | null>(null);
+  const navigatedRef = useRef(false);
   // const [fingerprints, setFingerprints] = useState<{ liffId?: string; channelSecret?: string; channelAccessToken?: string } | null>(null); // ★ 不使用
 
   /* ------------------------------ Effects ---------------------------------- */
+  // liffManager を使って LINE 内なら外部ブラウザで開く / それ以外は通常遷移
+  function openUrl(url: string) {
+    if (!url) return;
+    try {
+      if (typeof window !== 'undefined' && (liffManager as any)?.inClient?.()) {
+        // 必要に応じて external: false にすると LINE 内WebViewで開きます
+        (liffManager as any)?.openWindow
+          ? (liffManager as any).openWindow({ url, external: true })
+          : (window.location.href = url);
+      } else {
+        // 通常ブラウザ
+        window.location.replace(url);
+      }
+    } catch {
+      window.location.href = url;
+    }
+  }
+  useEffect(() => {
+    if (!isAutoMode || !formUrl || isGeneratingUrl) return;
+    const url = generatedUrl || formUrl;
+    if (!url) return;
+    if (navigatedRef.current) return; // 二重遷移防止
+    navigatedRef.current = true;
+    openUrl(url);
+  }, [isAutoMode, formUrl, generatedUrl, isGeneratingUrl]);
 
   useEffect(() => {
     setPathname(window.location.pathname);
@@ -711,7 +737,23 @@ export default function Home() {
                   <span className="text-blue-600">フォームへ移動中...</span>
                 </h3>
               </div>
-            ) : ('うっぷ')
+            ) : (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームに移動します…</span>
+                </h3>
+                <p className="text-sm mt-2">
+                  自動で開かない場合は
+                  {' '}
+                  <a
+                    href={(generatedUrl || formUrl) ?? '#'}
+                    className="text-blue-600 underline"
+                  >
+                    こちらをタップ
+                  </a>
+                </p>
+              </div>
+            )
           )}
 
           {!isAutoMode && isTab !== 'secret' && isTab !== 'howto' && (
