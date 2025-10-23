@@ -48,55 +48,60 @@ export default function OpenFormClient() {
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        // 1) /api/links 取得
+        // 1) /api/links
         const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        // 2) LIFF 初期化
+        // 2) LIFF ID
         const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
         const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
+
         setLiffIdForButton(liffToUse);
 
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        const liffObj = (window as any).liff;
-        const inClient = typeof liffObj?.isInClient === "function" ? liffObj.isInClient() : false;
+        // 3) in-client 判定
+        const inClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
 
-        // ★ ここが変更点：inClient でなくても続行する
-        // 未ログインならログイン（PC外部ブラウザでもOK）
-        if (!liffObj.isLoggedIn()) {
-          liffObj.login({ redirectUri: window.location.href });
-          return; // ここで一旦離脱、ログイン後に同じURLで戻って来る
+        // 3.5) in-client でない → ユニバーサルリンクへ自動遷移（ループ防止あり）
+        if (!inClient) {
+          const already = sessionStorage.getItem(ONCE_KEY) === "1";
+          if (!already) {
+            sessionStorage.setItem(ONCE_KEY, "1");
+            // いまのクエリをそのまま引き継ぐ
+            const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+            location.replace(universal);
+            return;
+          } else {
+            // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
+            setShowOpenInLine(true);
+            return;
+          }
         }
+        // in-client で再入場できたのでフラグをクリア
+        sessionStorage.removeItem(ONCE_KEY);
 
-        // 3) ユーザーID取得（外部ブラウザでは ID Token の sub が確実）
-        let userId: string | null = null;
-        try {
-          const decoded = liffObj.getDecodedIDToken?.();
-          userId = decoded?.sub || null;
-        } catch { }
-        if (!userId) {
-          const profile = await liffObj.getProfile();
-          userId = profile?.userId || null;
-        }
-        if (!userId) throw new Error("LINEユーザーIDが取得できませんでした。");
+        // 4) プロフィール取得（in-clientなのでログイン画面は出ない）
+        const profile = await liffManager.getProfile();
+        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
 
-        // 4) ユーザー保存（任意）
         await fetch("/api/line-users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            lineUserId: userId,
-            displayName: liffObj.getDecodedIDToken?.()?.name ?? undefined,
-            pictureUrl: liffObj.getDecodedIDToken?.()?.picture ?? null,
+            lineUserId: profile.userId,
+            displayName: profile.displayName,
+            pictureUrl: profile.pictureUrl ?? null,
           }),
-        }).catch(() => { /* 失敗しても続行 */ });
+        });
 
-        // 5) GoogleフォームURL & entry 決定
+        // 5) GoogleフォームURL & entry
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
         const entryFromUrl = qs.get("entry");
         let userEntry: string | null = null;
@@ -105,21 +110,19 @@ export default function OpenFormClient() {
         } else if (link.entry) {
           userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
         } else {
-          // 自動検出は不安定なら省略可
           const det = await GoogleFormsManager.detectEntryIds(viewUrl).catch(() => null);
-          if (det?.success && det.userId)
-            userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
+          if (det?.success && det.userId) userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
+          if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
-        if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
 
-        // 6) プリフィル作成
-        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(userId)}`;
+        // 6) prefill
+        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // 7) 通知（必要なときだけ、少し待ってから）
+        // 7) 通知（任意）
         if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
-            userId,
+            userId: profile.userId,
             type: "card" as const,
             formUrl: prefill,
             title: link.title || "Googleフォーム",
@@ -127,17 +130,27 @@ export default function OpenFormClient() {
             bgcolor: link.bgcolor,
             lid,
           };
-          await sendNotifyCard(payload).catch(() => { });
+          try {
+            let sent = false;
+            if ("sendBeacon" in navigator) {
+              const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+              sent = navigator.sendBeacon("/api/line", blob);
+            }
+            if (!sent) {
+              await fetch("/api/line", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              });
+            }
+          } catch { /* ignore */ }
         }
 
-        // 8) 遷移（PC/外部ブラウザでもOK）
-        location.replace(prefill);
+        // 8) 遷移
+        setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
-        // モバイルでLINE外ブラウザのときだけ「LINEで開く」を出す
-        const ua = navigator.userAgent.toLowerCase();
-        const isMobile = /iphone|ipad|ipod|android/.test(ua);
-        if (isMobile) setShowOpenInLine(true);
         setErr(e?.message || String(e));
       }
     })();
