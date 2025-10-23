@@ -5,6 +5,7 @@ import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
 const ONCE_KEY = "redirectedToLiff";
+const FORM_REDIRECTED_KEY = "redirectedToForm"; // ★ 追加
 
 function isMobileLike() {
   if (typeof navigator === "undefined") return false;
@@ -20,27 +21,27 @@ export default function OpenFormClient() {
   const sentRef = useRef(false);
   const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  async function sendNotifyCard(payload: any) {
-    try {
-      let beaconed = false;
-      if ("sendBeacon" in navigator) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        beaconed = navigator.sendBeacon("/api/line", blob);
-      }
-      if (!beaconed) {
-        await fetch("/api/line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          credentials: "include",
-        });
-      }
-      await new Promise((r) => setTimeout(r, 600));
-    } catch (e) {
-      console.warn("[notify] failed:", e);
-    }
-  }
+  // async function sendNotifyCard(payload: any) {
+  //   try {
+  //     let beaconed = false;
+  //     if ("sendBeacon" in navigator) {
+  //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  //       beaconed = navigator.sendBeacon("/api/line", blob);
+  //     }
+  //     if (!beaconed) {
+  //       await fetch("/api/line", {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify(payload),
+  //         keepalive: true,
+  //         credentials: "include",
+  //       });
+  //     }
+  //     await new Promise((r) => setTimeout(r, 600));
+  //   } catch (e) {
+  //     console.warn("[notify] failed:", e);
+  //   }
+  // }
 
   useEffect(() => {
     (async () => {
@@ -160,6 +161,7 @@ export default function OpenFormClient() {
         }
 
         // 8) 遷移
+        sessionStorage.setItem(FORM_REDIRECTED_KEY, "1"); // ★ 追加
         setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
@@ -185,6 +187,38 @@ export default function OpenFormClient() {
       location.href = universal;
     }
   };
+  useEffect(() => {
+    // フォームから戻ってきた（BFCache復帰含む）場合に自動で閉じる
+    const tryClose = () => {
+      if (sessionStorage.getItem(FORM_REDIRECTED_KEY) === "1") {
+        sessionStorage.removeItem(FORM_REDIRECTED_KEY);
+        // LINEアプリ内ブラウザならこれで閉じられる
+        try { (window as any).liff?.closeWindow?.(); } catch { }
+        // 非LIFF・一部環境向けのフォールバック
+        setTimeout(() => {
+          try { window.close(); } catch { }
+        }, 80);
+      }
+    };
+
+    // BFCache 復帰イベント
+    const onPageShow = (ev: PageTransitionEvent) => {
+      // ev.persisted が true なら BFCache 復帰
+      tryClose();
+    };
+
+    // タブ復帰でも検知（iOS/Safari 対策）
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tryClose();
+    };
+
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
