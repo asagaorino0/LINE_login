@@ -29,19 +29,18 @@ const client = CS
 
 const db = client.database(DBID);
 
-/** ★ 追加：既存の db を返すだけのヘルパ */
 export const getCosmosDatabase = (): Database => db;
-
-/** 共通のコンテナ取得ヘルパ（任意） */
 const getContainer = (name: string): Container =>
   getCosmosDatabase().container(name);
 
-/** ここから用途別アクセサ */
+/** 既存：他用途 */
 export function getLineUsersByIdContainer() {
-  // パーティションキー "/id" を想定
   return getContainer(process.env.COSMOS_LINE_USERS_CONTAINER ?? "lineUsersById");
 }
-
 export const getLineUsersContainer = () => getContainer("lineUsers");
 export const getLineSecretsByIdContainer = () => getContainer("lineSecretsById");
 export const getLinksByIdContainer = () => getContainer("linksById");
+
+/** ★ 追加：entryMappings コンテナ */
+export const getEntryMappingsContainer = () =>
+  getContainer(process.env.COSMOS_ENTRY_MAPPINGS_CONTAINER ?? "entryMappings");
