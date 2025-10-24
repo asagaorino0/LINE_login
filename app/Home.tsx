@@ -416,6 +416,7 @@ export default function Home() {
   // URL パラメータ→状態
   useEffect(() => {
     if (pathname === '/open') return;
+    console.log(new URLSearchParams(window.location.search))
     const sp = new URLSearchParams(window.location.search);
     const lid = sp.get("lid");
     const formParam = sp.get("form");
@@ -1273,6 +1274,7 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="text-center">
+                  <p>{new URLSearchParams(window.location.search)}</p>
                   <h3 className="text-base font-semibold">
                     <span className="text-blue-600">フォームに移動します…</span>
                   </h3>
