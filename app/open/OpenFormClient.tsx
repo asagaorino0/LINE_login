@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
+import { getBaseUrl } from "@/lib/getBaseUrl";
 
 const ONCE_KEY = "redirectedToLiff";
 const FORM_REDIRECTED_KEY = "redirectedToForm";
@@ -56,9 +57,14 @@ export default function OpenFormClient() {
         const qs = new URLSearchParams(location.search);
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
+        const base = getBaseUrl();
 
         // 1) リンク情報（await 必須：formUrl / entry が必要）
-        const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include", cache: "no-store" });
+        // const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include", cache: "no-store" });
+        const linkResp = await fetch(`${base}/api/links/${lid}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
@@ -131,7 +137,8 @@ export default function OpenFormClient() {
         // sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
         // location.replace(prefill);
         // 1) サーバで発行（短期トークン）
-        const issue = await fetch('/api/token/issue', {
+        // const issue = await fetch('/api/token/issue', {
+        const issue = await fetch(`${base}/api/token/issue`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lid, uid }),
@@ -141,7 +148,10 @@ export default function OpenFormClient() {
 
         // 2) サーバ側 302 経由でフォームへ（UIDはURLに出ない）
         sessionStorage.setItem(FORM_REDIRECTED_KEY, '1');
-        location.replace(j.redirectUrl);
+        const redirect = /^https?:\/\//i.test(j.redirectUrl)
+          ? j.redirectUrl
+          : `${base}${j.redirectUrl}`;
+        location.replace(redirect);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { makePayload, signToken } from '@/lib/token';
+import { getBaseUrl } from '@/lib/getBaseUrl';
 
 // ★ 既存の links 取得に合わせて実装。
 //   ここでは /api/links/{lid} を叩いて存在/有効性確認だけ行う想定。
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest) {
     const payload = makePayload(uid, lid, ttl);
     const token = signToken(payload, secret);
 
-    const base = process.env.BASE_URL?.replace(/\/+$/, '') || '';
+    // const base = process.env.BASE_URL?.replace(/\/+$/, '') || '';
+    const base = getBaseUrl();
     const redirectUrl = `${base}/r/${encodeURIComponent(token)}`;
 
     return NextResponse.json({ ok: true, token, redirectUrl, exp: payload.exp });
