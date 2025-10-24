@@ -51,6 +51,11 @@ function getFallbackLiffId(): string {
   return '';
 }
 
+function getUidFromQuery(): string {
+  if (typeof window === 'undefined') return '';
+  const sp = new URLSearchParams(window.location.search);
+  return sp.get('uid') || '';
+}
 ////////////////////////////////////////////
 // ★ 指定の固定フォールバック
 // const FALLBACK_LIFF_ID = new URLSearchParams(window.location.search).get('liff') || '';
@@ -656,19 +661,49 @@ export default function Home() {
   }, [viewUrlNormalized, isAdmin, isTab]);
 
   // prefill URL（自動モード時）
+  // useEffect(() => {
+  //   (async () => {
+  //     if (formUrl && isAutoMode) {
+  //       // 通知ONでUID無しならURLは作らない（送信もできないため）
+  //       if (!userProfile) {
+  //         setGeneratedUrl(null);
+  //         setIsGeneratingUrl(false);
+  //         return;
+  //       }
+  //       setIsGeneratingUrl(true);
+  //       try {
+  //         // UIDが無い場合はプリフィル無しURL（＝baseUrl）を返す
+  //         const uid = userProfile?.userId || '';
+  //         const url = await generatePrefillUrl(formUrl, uid);
+  //         setGeneratedUrl(url);
+  //       } catch (e) {
+  //         console.error('URL generation failed:', e);
+  //         setGeneratedUrl(null);
+  //       } finally {
+  //         setIsGeneratingUrl(false);
+  //       }
+  //     } else {
+  //       setGeneratedUrl(null);
+  //       setIsGeneratingUrl(false);
+  //     }
+  //   })();
+  //   // }, [
+  //   //   userProfile?.userId,
+  //   //   formUrl,
+  //   //   isAutoMode,
+  //   //   lastDetectionResult?.userId,
+  //   //   detectedEntries?.userId,
+  //   //   overrideUserEntry,
+  //   //   notifyEnabled///add
+  //   // ]);
+  // }, [/* userProfile?.userId, */ formUrl, isAutoMode, overrideUserEntry]);
   useEffect(() => {
     (async () => {
-      if (formUrl && isAutoMode) {
-        // 通知ONでUID無しならURLは作らない（送信もできないため）
-        if (!userProfile) {
-          setGeneratedUrl(null);
-          setIsGeneratingUrl(false);
-          return;
-        }
+      if (formUrl && overrideUserEntry) {
         setIsGeneratingUrl(true);
         try {
-          // UIDが無い場合はプリフィル無しURL（＝baseUrl）を返す
-          const uid = userProfile?.userId || '';
+          const uidFromQuery = getUidFromQuery();           // ★ 追加
+          const uid = uidFromQuery || userProfile?.userId || '';
           const url = await generatePrefillUrl(formUrl, uid);
           setGeneratedUrl(url);
         } catch (e) {
@@ -682,16 +717,15 @@ export default function Home() {
         setIsGeneratingUrl(false);
       }
     })();
-    // }, [
-    //   userProfile?.userId,
-    //   formUrl,
-    //   isAutoMode,
-    //   lastDetectionResult?.userId,
-    //   detectedEntries?.userId,
-    //   overrideUserEntry,
-    //   notifyEnabled///add
-    // ]);
-  }, [/* userProfile?.userId, */ formUrl, isAutoMode, overrideUserEntry]);
+    // ★ isAutoMode 依存は不要。uid はクエリから拾うため userProfile が無くても生成可
+  }, [formUrl, overrideUserEntry, userProfile?.userId]);
+  useEffect(() => {
+    if (!generatedUrl || navigatedRef.current) return;
+    navigatedRef.current = true;
+    // すぐに遷移（少し余韻を出したければ setTimeout でもOK）
+    window.location.replace(generatedUrl);
+  }, [generatedUrl]);
+
 
   useEffect(() => {
     if (isAutoMode && generatedUrl && !autoTriggeredRef.current) {
