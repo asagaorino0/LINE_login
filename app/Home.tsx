@@ -422,6 +422,7 @@ export default function Home() {
     const notifyParam = sp.get("notify");
     const tabParam = (sp.get("tab") || "").toLowerCase();
     const entryParam = sp.get("entry");
+    console.log(entryParam, ensureEntryFormat(entryParam!))
 
     if (entryParam) setOverrideUserEntry(ensureEntryFormat(entryParam));
 
@@ -432,7 +433,6 @@ export default function Home() {
         const r = await fetch(`/api/links/${lid}`);
         const j = await r.json();
         if (r.ok && j?.ok) {
-          alert(j.formUrl)
           linkCtxRef.current = { lid, aid: j.aid };
           setFormUrl(j.formUrl);
           if (j.title) setFormTitle(j.title);
@@ -1262,6 +1262,7 @@ export default function Home() {
 
           {/* ページャ（元のまま） */}
           {formUrl
+            && overrideUserEntry
             // && isAutoMode
             ? (
               isGeneratingUrl ? (
