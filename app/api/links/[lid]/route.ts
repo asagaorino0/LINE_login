@@ -1,4 +1,5 @@
 // app/api/links/[lid]/route.ts
+import { fetchFormMeta, toViewUrl } from "@/lib/formsMeta";
 export const runtime = "nodejs";
 // 必要なら: export const dynamic = "force-dynamic"; // ← キャッシュを完全に無効化したい場合
 
@@ -39,16 +40,11 @@ const normalizeGoogleFormViewUrl = (url: string) => {
 export async function GET(req: Request, ctx: any) {
   try {
     const lid = ctx?.params?.lid?.trim?.();
-    if (!lid) {
-      return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
-    }
+    if (!lid) return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
 
     const { resource } = await getLinksByIdContainer().item(lid, lid).read<LinkDoc>();
-    if (!resource) {
-      return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
-    }
+    if (!resource) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
 
-    // 有効期限チェック（任意）
     if (typeof resource.expiresAt === "number" && resource.expiresAt > 0 && Date.now() > resource.expiresAt) {
       return NextResponse.json({ ok: false, code: "LINK_EXPIRED" }, { status: 410 });
     }
@@ -56,11 +52,21 @@ export async function GET(req: Request, ctx: any) {
     const q = new URL(req.url).searchParams;
     const liffFromQuery = q.get("liff") || q.get("liffId") || undefined;
 
-    const formUrl = normalizeGoogleFormViewUrl(resource.formUrl);
+    const formUrl = toViewUrl(resource.formUrl);
     const entry = normalizeEntry(q.get("entry") ?? resource.entry ?? undefined);
     const notify = toBooleanNumber(resource.notify);
 
-    // LIFF_ID の決定順：クエリ > DB > 環境変数（保険）
+    // ★ 空ならここで取得して返す（DB更新はせずレスポンスのみ）
+    let title = (resource.title || "").trim();
+    let desc = (resource.desc || "").trim();
+    if (!title || !desc) {
+      try {
+        const meta = await fetchFormMeta(formUrl);
+        if (!title && meta.title) title = meta.title;
+        if (!desc && meta.desc) desc = meta.desc;
+      } catch { /* noop */ }
+    }
+
     const liffId =
       (liffFromQuery as string | undefined) ||
       (resource.liffId || undefined) ||
@@ -68,17 +74,12 @@ export async function GET(req: Request, ctx: any) {
 
     const body = {
       ok: true,
-      title: resource.title || "Googleフォーム",
-      desc: resource.desc || "",
+      title: title || "Googleフォーム",
+      desc: desc || "",
       formUrl,
-      entry,     // "entry.XXXX" に正規化済
-      notify,    // 0/1
-      liffId,    // 変動OK（無ければ undefined）
-      // 必要なら以下を開放
-      // aid: resource.aid ?? undefined,
-      // basicId: resource.basicId ?? undefined,
-      // formId: resource.formId ?? undefined,
-      // expiresAt: resource.expiresAt ?? undefined,
+      entry,
+      notify,
+      liffId,
     };
 
     const res = NextResponse.json(body, { status: 200 });

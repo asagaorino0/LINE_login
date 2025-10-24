@@ -1,3 +1,5 @@
+// app/api/links/route.ts など POST 側（あなたの POST 実装箇所）
+import { fetchFormMeta, toViewUrl } from "@/lib/formsMeta";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -44,26 +46,25 @@ export async function POST(req: NextRequest) {
     const formId = extractFormId(form);
     if (!formId) return fail(req, { ok: false, code: "BAD_FORM_URL" }, 400);
 
-    // ← ここを await にする
     const cookieStore = await cookies();
     let aid = cookieStore.get("uid")?.value ?? null;
 
-    // notify=0 の場合は匿名作成を許可、notify=1 の場合は管理者認証が必要
     if (notify) {
-      // notify=1 の場合は管理者認証が必要
       if (!aid) return fail(req, { ok: false, code: "NO_ADMIN_ID" }, 401);
     } else {
-      // notify=0 の場合は匿名作成を許可
-      if (!aid) {
-        aid = 'anonymous';
-      }
+      if (!aid) aid = "anonymous";
     }
 
-    // basicId を正規化して @ 付け忘れに対応
-    const normBasicId =
-      typeof basicId === "string" && basicId.trim()
-        ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
-        : null;
+    // ★ タイトル/説明の自動取得（未指定のときだけ）
+    let finalTitle = (title ?? "").trim();
+    let finalDesc = (desc ?? "").trim();
+    if (!finalTitle || !finalDesc) {
+      try {
+        const meta = await fetchFormMeta(form);
+        if (!finalTitle && meta.title) finalTitle = meta.title;
+        if (!finalDesc && meta.desc) finalDesc = meta.desc;
+      } catch { /* 失敗しても続行 */ }
+    }
 
     const lid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
     const now = Math.floor(Date.now() / 1000);
@@ -71,15 +72,17 @@ export async function POST(req: NextRequest) {
     await getLinksByIdContainer().items.upsert({
       id: lid,
       aid,
-      basicId: normBasicId,           // ← 修正：正規化した値を保存
+      basicId: typeof basicId === "string" && basicId.trim()
+        ? (basicId.trim().startsWith("@") ? basicId.trim() : `@${basicId.trim()}`)
+        : null,
       formUrl: form,
       formId,
-      title: title ?? null,
-      desc: desc ?? null,
+      title: finalTitle || null,
+      desc: finalDesc || null,
       bgcolor: bgcolor ?? null,
       notify: notify ? 1 : 0,
-      entry: entry ?? null,          // 手入力entry IDを保存
-      liffId: liffId ?? null,         // LIFF IDを保存
+      entry: entry ?? null,
+      liffId: liffId ?? null,
       createdAt: now,
       expiresAt: Number(expiresAt || 0) || 0,
     });
