@@ -432,6 +432,7 @@ export default function Home() {
         const r = await fetch(`/api/links/${lid}`);
         const j = await r.json();
         if (r.ok && j?.ok) {
+          alert(j.formUrl)
           linkCtxRef.current = { lid, aid: j.aid };
           setFormUrl(j.formUrl);
           if (j.title) setFormTitle(j.title);
