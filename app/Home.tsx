@@ -15,7 +15,6 @@ import { ToastNotification, useToastNotification } from '../components/ui/toast-
 import { apiRequest } from './lib/queryClient';
 import { GoogleFormsManager } from './lib/googleForms';
 import { liffManager, LiffProfile } from '@/lib/liff';
-import HomeClient from './(public)/HomeClient';
 import LineSettingsClient from './line-settings/client';
 import Howto from './line-settings/howto';
 
@@ -260,21 +259,6 @@ export default function Home() {
       try {
         await ensureLiffReady();
         setIsInitialized(true);
-
-        // 外部ブラウザでもログインは有効。inClient の有無で“やること”だけ分岐
-        // const inClient = liffManager.inClient();
-        // if (liffManager.isLoggedIn()) {
-        //   const profile = await liffManager.getProfile();
-        //   if (profile) {
-        //     setUserProfile(profile);
-        //     setIsLoggedIn(true);
-        //     if (inClient) setLineUserId(profile.userId);       // UIDの「表示」だけクライアント内に限定
-        // await apiRequest('POST', '/api/line-users', {
-        //   lineUserId: profile.userId,
-        //   displayName: profile.displayName,
-        //   pictureUrl: profile.pictureUrl || null,
-        // });
-        // ログイン後に保存された画面状態を復元
         try {
           const sp = new URLSearchParams(location.search);
           const tabFromUrl = (sp.get('tab') || '').toLowerCase();
@@ -384,39 +368,6 @@ export default function Home() {
     }
   }, [userProfile?.userId, setAdminCookie]);
 
-  // アカウント一覧（admin タブ時）
-  // useEffect(() => {
-  //   if (isTab === "top" || !adminReady) {
-  //     // 認証未完了時は一覧を空にしておく（他人のが見えないように）
-  //     setAccounts([]);
-  //     setSelectedBasicId("");
-  //     return;
-  //   }
-  //   let aborted = false;
-  //   (async () => {
-  //     try {
-  //       const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
-  //       if (aborted) return;
-  //       if (r.status === 401) { setAccounts([]); setSelectedBasicId(""); return; }
-  //       const j = await r.json();
-  //       const raw = Array.isArray(j?.items) ? j.items : [];
-  //       const normalized: Account[] = raw
-  //         .map((a: any): Account => ({
-  //           basicId: typeof a?.basicId === "string" ? a.basicId : "",
-  //           channelName: typeof a?.channelName === "string" ? a.channelName : undefined,
-  //           channelId: typeof a?.channelId === "string" ? a.channelId : undefined,
-  //         }))
-  //         .filter((a: { basicId: string }) => a.basicId !== "");
-  //       setAccounts(normalized);
-  //       setBasicId(normalized[0]?.basicId ?? "");
-  //       setSelectedBasicId((prev) => prev || (normalized[0]?.basicId ?? ""));
-  //     } catch {
-  //       if (!aborted) { setAccounts([]); setSelectedBasicId(""); }
-  //     }
-  //   })();
-
-  //   return () => { aborted = true; };
-  // }, [isTab, adminReady]);
 
   // URL パラメータ→状態
   useEffect(() => {
@@ -453,13 +404,9 @@ export default function Home() {
       setFormUrl(decodeURIComponent(formParam));
       setIsAutoMode(true);
     }
-    // if (notifyParam === "0") setNotifyEnabled(false);
-    // if (notifyParam === "1") setNotifyEnabled(true);
-    // URLに tab=admin があれば admin タブへ
     if (tabParam === "admin") {
       setIsAdmin(true);
       setIsTab("admin");
-      // URLをきれいにする
       sp.delete("tab");
       const qs = sp.toString();
       const clean = `${location.pathname}${qs ? "?" + qs : ""}${location.hash}`;
@@ -483,7 +430,6 @@ export default function Home() {
       }
     }
   }, [cookieInfo?.hasUid, pathname]);
-
 
   // タイトル同期
   useEffect(() => {
@@ -580,45 +526,6 @@ export default function Home() {
       return originalUrl;
     }
   };
-  // 前のやつ
-  // const generatePrefillUrl = async (originalUrl: string, userId: string): Promise<string> => {
-  //   try {
-  //     const baseUrl = originalUrl.split('?')[0];
-
-  //     // 優先度：手入力 > 直近検出 > その場検出
-  //     let userIdEntry =
-  //       (overrideUserEntry.trim() ? ensureEntryFormat(overrideUserEntry) : '') ||
-  //       (lastDetectionResult?.formUrl === originalUrl ? lastDetectionResult.userId : detectedEntries?.userId);
-
-  //     if (!userIdEntry) {
-  //       try {
-  //         const detection = await GoogleFormsManager.detectEntryIds(originalUrl);
-  //         if (detection.success && detection.userId) {
-  //           userIdEntry = detection.userId;
-  //           setLastDetectionResult({ userId: detection.userId, formUrl: originalUrl });
-  //           setDetectedEntries({ userId: detection.userId });
-  //           if (detection.title) setFormTitle(detection.title);
-  //           if (detection.description) setFormDescription(detection.description);
-  //         }
-  //       } catch {/* noop */ }
-  //     }
-
-  //     if (!userIdEntry)
-  //       throw new Error("このフォームでは自動UID連携に対応していません。手動でentry IDを指定してください。");
-
-  //     const params = new URLSearchParams();
-  //     if (userId) {
-  //       params.set('usp', 'pp_url');
-  //       params.set(userIdEntry, userId);
-  //       return `${baseUrl}?${params.toString()}`;
-  //     }
-  //     // UID が無い時はプリフィル無しで返す
-  //     return baseUrl;
-  //   } catch (e) {
-  //     console.error('Failed to generate prefill URL:', e);
-  //     return originalUrl;
-  //   }
-  // };
 
   const detectTimerRef = useRef<number | null>(null);
   useEffect(() => {
@@ -660,46 +567,9 @@ export default function Home() {
     };
   }, [viewUrlNormalized, isAdmin, isTab]);
 
-  // prefill URL（自動モード時）
-  // useEffect(() => {
-  //   (async () => {
-  //     if (formUrl && isAutoMode) {
-  //       // 通知ONでUID無しならURLは作らない（送信もできないため）
-  //       if (!userProfile) {
-  //         setGeneratedUrl(null);
-  //         setIsGeneratingUrl(false);
-  //         return;
-  //       }
-  //       setIsGeneratingUrl(true);
-  //       try {
-  //         // UIDが無い場合はプリフィル無しURL（＝baseUrl）を返す
-  //         const uid = userProfile?.userId || '';
-  //         const url = await generatePrefillUrl(formUrl, uid);
-  //         setGeneratedUrl(url);
-  //       } catch (e) {
-  //         console.error('URL generation failed:', e);
-  //         setGeneratedUrl(null);
-  //       } finally {
-  //         setIsGeneratingUrl(false);
-  //       }
-  //     } else {
-  //       setGeneratedUrl(null);
-  //       setIsGeneratingUrl(false);
-  //     }
-  //   })();
-  //   // }, [
-  //   //   userProfile?.userId,
-  //   //   formUrl,
-  //   //   isAutoMode,
-  //   //   lastDetectionResult?.userId,
-  //   //   detectedEntries?.userId,
-  //   //   overrideUserEntry,
-  //   //   notifyEnabled///add
-  //   // ]);
-  // }, [/* userProfile?.userId, */ formUrl, isAutoMode, overrideUserEntry]);
   useEffect(() => {
     (async () => {
-      if (formUrl && overrideUserEntry) {
+      if (formUrl && isAutoMode) {
         setIsGeneratingUrl(true);
         try {
           const uidFromQuery = getUidFromQuery();           // ★ 追加
@@ -729,15 +599,12 @@ export default function Home() {
 
   useEffect(() => {
     if (isAutoMode && generatedUrl && !autoTriggeredRef.current) {
-      // For notifications enabled: require login
-      // For notifications disabled: no login required
       if (notifyEnabled) {
         if (isLoggedIn && userProfile) {
           autoTriggeredRef.current = true;
           void sendLineMessageAndOpenForm(false);
         }
       } else {
-        // No login required when notifications are disabled
         autoTriggeredRef.current = true;
         void sendLineMessageAndOpenForm(false);
       }
@@ -770,38 +637,6 @@ export default function Home() {
 
     try {
       const normalized = viewUrlNormalized;
-      // 前のやつ
-      // let nextTitle = formTitle || "Googleフォーム";
-      // let nextDesc = formDescription;
-      // let nextBgcolor = formBgcolor || "#555555";
-      // try {
-      //   const result = await GoogleFormsManager.detectEntryIds(normalized);
-      //   if (result?.success) {
-      //     if (result.title) nextTitle = result.title;
-      //     if (result.description) nextDesc = result.description;
-      //     setDetectedEntries({ userId: result.userId });
-      //     if (result.userId) setLastDetectionResult({ userId: result.userId, formUrl: normalized });
-      //   }
-      // } catch {/* ignore */ }
-      // setFormTitle(nextTitle);
-      // setFormDescription(nextDesc);
-      // setFormBgcolor(nextBgcolor);
-      // const payload: Record<string, any> = {
-      //   form: normalized,
-      //   title: String(nextTitle ?? ''),
-      //   desc: String(nextDesc ?? ''),
-      //   notify: 0,
-      //   bgcolor: nextBgcolor,
-      // };
-
-      // if (payload.notify === 1) {
-      //   const picked = (selectedBasicId || basicId || "").trim();
-      //   if (!picked) {
-      //     showToast("公式LINE（basicId）を選択してください", "error");
-      //     return;
-      //   }
-      //   payload.basicId = picked;
-      // }
       const payload: Record<string, any> = {
         form: normalized,
         title: String(formTitle ?? ''),
@@ -809,6 +644,7 @@ export default function Home() {
         notify: 0,               // 通知はここでは使わない
         bgcolor: formBgcolor || '#555555',
       };
+
       if (overrideUserEntry.trim()) {
         payload.entry = ensureEntryFormat(overrideUserEntry);
       }
@@ -856,18 +692,6 @@ export default function Home() {
       //   setIsDetecting(false);
     }
   };
-  /* ---- preview card image ---- */
-  // const previewUrl = useMemo(() => {
-  //   if (!viewUrlNormalized) return '';
-  //   const params = new URLSearchParams({
-  //     form: viewUrlNormalized,
-  //     title: formTitle || '',
-  //     desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
-  //     notify: '0',
-  //     v: String(Date.now()),
-  //   });
-  //   return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  // }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
@@ -973,8 +797,7 @@ export default function Home() {
       </div>
     );
   }
-  // const sp = new URLSearchParams(window.location.search);
-  // const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+
   const liffIdFromUrl = (() => {
     if (typeof window === 'undefined') return '';
     const sp = new URLSearchParams(window.location.search ?? '');
@@ -982,8 +805,6 @@ export default function Home() {
   })();
 
   const liffIdFromForm = liffIdForm.watch('liffId');
-  // const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || FALLBACK_LIFF_ID;
-  // 追加//////////////////////////////////////
   const hasLiffId = liffIdFromUrl || liffIdFromForm || liffSettingsQuery.data?.liffId || getFallbackLiffId();
 
   const currentLiffId = String(
@@ -991,10 +812,7 @@ export default function Home() {
   );
 
   type LiffIdFormData = { liffId: string };
-  //　前のやつ
-  // const onLiffIdSubmit = (data: LiffIdFormData) => {
-  //   saveLiffIdMutation.mutate(data);
-  // };
+
   const onLiffIdSubmit: SubmitHandler<LiffIdFormData> = (data) => {
     saveLiffIdMutation.mutate(data);
   };
@@ -1009,7 +827,7 @@ export default function Home() {
     const j = await r.json();
     return j?.data as { entry: string; formId: string } | null;
   }
-  ////////////////////////////////////////
+
   return (
     <>
       {/* <HomeClient /> */}
@@ -1033,23 +851,9 @@ export default function Home() {
                 </h3>
               </div>
             ) : (
-              "うっぷ"
+              null
             )
           )}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
           {!isAutoMode && isTab !== 'secret' && isTab !== 'howto' && (
             <>
@@ -1077,30 +881,6 @@ export default function Home() {
                             LINE Developers Console
                           </a> にログイン
                         </p>
-                        {/* <p className="text-sm text-gray-600">
-                          <span className="M7eMe">
-                            <span style={{
-                              backgroundColor: '#00be00',
-                              color: '#ffffff',
-                              marginRight: 2
-                            }}>{`</> `}</span> <span > <strong> LINEログイン →　 </strong></span>
-                          </span>
-                          <span className='text-gray-400'> チャネル基本設定 | </span>
-                          <span className='text-gray-400'> LINEログイン設定 | </span>
-                          <strong
-                            style={{
-                              textDecoration: "underline",
-                              textDecorationColor: "#00be00",
-                              textDecorationThickness: "5px", // 下線の太さを指定
-                            }}
-                          >
-                            LIFF
-                          </strong>
-
-                          <span className='text-gray-400'>  | 権限設定  </span>
-                          <span > 　から取得</span>
-                        </p>
-                        <p className="text-sm text-gray-600">無ければ追加</p> */}
                         <Form {...liffIdForm}>
                           <form onSubmit={liffIdForm.handleSubmit(onLiffIdSubmit)}>
                             <FormField
@@ -1134,10 +914,6 @@ export default function Home() {
                               onChange={(e) => {
                                 setFormUrl(e.target.value);
                                 setSignedLink('');
-                                // setDetectedEntries(null);
-                                // setLastDetectionResult(null);
-                                // setSignedLink("");
-                                // setDetectionError(null);
                               }}
                               placeholder="ここにGoogleフォームのURLを入力"
                               className="pr-5 text-gray-500 text-sm bg-blue-200"
@@ -1295,77 +1071,72 @@ export default function Home() {
             <Howto onClick={() => { setIsTab('admin'); setIsAdmin(true); }} />
           )}
 
-          {/* ページャ（元のまま） */}
-          {formUrl
-            && overrideUserEntry
-            // && isAutoMode
-            ? (
-              isGeneratingUrl ? (
-                <div className="text-center">
-                  <h3 className="text-base font-semibold">
-                    <span className="text-blue-600">フォームへ移動中...</span>
-                  </h3>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <p>{new URLSearchParams(window.location.search)}</p>
-                  <h3 className="text-base font-semibold">
-                    <span className="text-blue-600">フォームに移動します…</span>
-                  </h3>
-                  <p className="text-sm mt-2">
-                    自動で開かない場合は
-                    {' '}
-                    <a
-                      href={(generatedUrl || formUrl) ?? '#'}
-                      className="text-blue-600 underline"
-                    >
-                      こちらをタップ
-                    </a>
-                  </p>
-                </div>
-              )
-            ) : (
-              <div className="flex flex-row justify-center m-4">
-                <div className="px-2">
-                  {isTab === "top" ? (
-                    <button className="rounded-full h-5 w-5 bg-primary" />
-                  ) : (
-                    <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
-                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                    </button>
-                  )}
-                </div>
-                <div className="px-2">
-                  {isTab === "admin" ? (
-                    <button className="rounded-full h-5 w-5 bg-primary" />
-                  ) : (
-                    <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
-                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                    </button>
-                  )}
-                </div>
-                {/* {notifyEnabled && ( */}
-                <div className="px-2">
-                  {isTab === "secret" ? (
-                    <button className="rounded-full h-5 w-5 bg-primary" />
-                  ) : (
-                    <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
-                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                    </button>
-                  )}
-                </div>
-                {/* )} */}
-                <div className="px-2">
-                  {isTab === "howto" ? (
-                    <button className="rounded-full h-5 w-5 bg-primary" />
-                  ) : (
-                    <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
-                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                    </button>
-                  )}
-                </div>
+          {formUrl && isAutoMode ? (
+            isGeneratingUrl ? (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームへ移動中...</span>
+                </h3>
               </div>
-            )}
+            ) : (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームに移動します…</span>
+                </h3>
+                <p className="text-sm mt-2">
+                  自動で開かない場合は
+                  {' '}
+                  <a
+                    href={(generatedUrl || formUrl) ?? '#'}
+                    className="text-blue-600 underline"
+                  >
+                    こちらをタップ
+                  </a>
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="flex flex-row justify-center m-4">
+              <div className="px-2">
+                {isTab === "top" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              <div className="px-2">
+                {isTab === "admin" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              {/* {notifyEnabled && ( */}
+              <div className="px-2">
+                {isTab === "secret" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              {/* )} */}
+              <div className="px-2">
+                {isTab === "howto" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </main>
 
         <footer className="max-w-md mx-auto px-4 py-6 text-center">
