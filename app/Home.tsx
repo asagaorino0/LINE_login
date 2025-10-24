@@ -503,43 +503,43 @@ export default function Home() {
   };
 
   const detectTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!isAdmin || isTab !== 'admin') return;
-    if (!viewUrlNormalized) {
-      setDetectedEntries(null);
-      setDetectionError(null);
-      return;
-    }
-    if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
-    detectTimerRef.current = window.setTimeout(async () => {
-      setIsDetecting(true);
-      setDetectionError(null);
-      try {
-        const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
-        if (res?.success && res.userId) {
-          setDetectedEntries({ userId: res.userId });
-          // setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
-          if (res.title) setFormTitle(res.title);
-          if (res.description) setFormDescription(res.description);
-        } else {
-          setDetectedEntries(null);
-          setDetectionError(res?.error || 'entry IDの自動検出に失敗しました。手動で入力してください。');
-          if (res?.title) setFormTitle(res.title);
-          if (res?.description) setFormDescription(res.description);
-        }
-      } catch (e: any) {
-        setDetectedEntries(null);
-        setDetectionError('entry IDの自動検出に失敗しました。手動で入力してください。');
-        console.warn('Detection error:', e);
-      } finally {
-        setIsDetecting(false);
-      }
-    }, 500);
 
-    return () => {
-      if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
-    };
-  }, [viewUrlNormalized, isAdmin, isTab]);
+  // useEffect(() => {
+  //   if (!isAdmin || isTab !== 'admin') return;
+  //   if (!viewUrlNormalized) {
+  //     // setDetectedEntries(null);
+  //     setDetectionError(null);
+  //     return;
+  //   }
+  //   if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+  //   detectTimerRef.current = window.setTimeout(async () => {
+  //     setIsDetecting(true);
+  //     setDetectionError(null);
+  //     try {
+  //       const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
+  //       if (res?.success && res.userId) {
+  //         setDetectedEntries({ userId: res.userId });
+  //         // setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
+  //         if (res.title) setFormTitle(res.title);
+  //         if (res.description) setFormDescription(res.description);
+  //       } else {
+  //         setDetectedEntries(null);
+  //         setDetectionError(res?.error || 'entry IDの自動検出に失敗しました。手動で入力してください。');
+  //         if (res?.title) setFormTitle(res.title);
+  //         if (res?.description) setFormDescription(res.description);
+  //       }
+  //     } catch (e: any) {
+  //       setDetectedEntries(null);
+  //       setDetectionError('entry IDの自動検出に失敗しました。手動で入力してください。');
+  //       console.warn('Detection error:', e);
+  //     } finally {
+  //       setIsDetecting(false);
+  //     }
+  //   }, 500);
+  //   return () => {
+  //     if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+  //   };
+  // }, [viewUrlNormalized, isAdmin, isTab]);
 
   useEffect(() => {
     (async () => {
