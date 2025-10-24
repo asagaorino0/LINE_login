@@ -71,7 +71,18 @@ export default function OpenFormClient() {
         const qs = new URLSearchParams(location.search);
         const lid = qs.get("lid");
         const entryFromUrl = qs.get("entry");
-        const liffFromUrl = qs.get("liff");
+        const liffFromUrl = qs.get("liff");////未使用
+
+
+        // 後で消す！！
+        // 🔍 スマホで確認できるように一時的にalertを出す
+        alert(
+          `🔍 LIFF デバッグ情報\n\n` +
+          `lid: ${lid ?? "(null)"}\n` +
+          `entry: ${entryFromUrl ?? "(null)"}\n` +
+          `liff: ${liffFromUrl ?? "(null)"}\n\n` +
+          `URL: ${location.href}`
+        );
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         const base = getBaseUrl() || location.origin;
@@ -165,20 +176,6 @@ export default function OpenFormClient() {
         sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
         location.replace(dest.startsWith("http") ? dest : `${base}${dest}`);
 
-        // const issue = await fetch(`${base}/api/token/issue`, {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ lid, uid }),
-        // });
-        // const j = await issue.json();
-        // if (!issue.ok || !j?.ok) throw new Error(j?.error || 'TOKEN_ISSUE_FAILED');
-
-        // // 2) サーバ側 302 経由でフォームへ（UIDはURLに出ない）
-        // sessionStorage.setItem(FORM_REDIRECTED_KEY, '1');
-        // const redirect = /^https?:\/\//i.test(j.redirectUrl)
-        //   ? j.redirectUrl
-        //   : `${base}${j.redirectUrl}`;
-        // location.replace(redirect);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));
