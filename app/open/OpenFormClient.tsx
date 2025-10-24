@@ -19,9 +19,8 @@ function isMobileLike() {
   try {
     const url = new URL(window.location.href);
     const state = url.searchParams.get("liff.state");
-    const doneFlag = sessionStorage.getItem("_liff_state_normalized") === "1";
-
-    if (state && !doneFlag) {
+    // Safari/LINE 内で sessionStorage が飛ぶケースがあるので、フラグ判定はしない
+    if (state) {
       // state は "?lid=...&entry=...&liff=..." のように先頭 ? が付くことがある
       const raw = state.startsWith("?") ? state.slice(1) : state;
       const s = new URLSearchParams(raw);
@@ -31,8 +30,8 @@ function isMobileLike() {
       s.forEach((v, k) => next.searchParams.set(k, v));
 
       // もう一度ここに戻ってこないようフラグ
-      sessionStorage.setItem("_liff_state_normalized", "1");
-
+      // sessionStorage.setItem("_liff_state_normalized", "1");
+      window.location.replace(next.toString());
       // URL を正規化してから再読み込み（履歴は残さなくてOKなので replace）
       window.location.replace(next.toString());
     }
@@ -82,7 +81,14 @@ export default function OpenFormClient() {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
+        console.log("[DEBUG] location.search =", location.search);
+        console.log("[DEBUG] qs entries =", Array.from(qs.entries()));
+
         const lid = qs.get("lid");
+        const entryFromUrl = qs.get("entry");
+        const liffFromUrl = qs.get("liff");
+        console.log("[DEBUG] lid:", lid, "entry:", entryFromUrl, "liff:", liffFromUrl);
+
         if (!lid) throw new Error("NO_LID_IN_URL");
         const base = getBaseUrl() || location.origin;
 
@@ -96,7 +102,7 @@ export default function OpenFormClient() {
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
         // 2) entry は URL かリンク作成時の値のみ（detect は行わない）
-        const entryFromUrl = qs.get("entry");
+        // const entryFromUrl = qs.get("entry");
         const entry =
           entryFromUrl ? (entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`) :
             link.entry ? (String(link.entry).startsWith("entry.") ? String(link.entry) : `entry.${link.entry}`) :
@@ -119,6 +125,7 @@ export default function OpenFormClient() {
           typeof (window as any).liff?.isInClient === "function"
             ? (window as any).liff.isInClient()
             : (liffManager as any).isInClient?.() ?? false;
+        console.log("[DEBUG] mobile:", mobile, "inClient:", inClient);
 
         // 4) 端末別分岐
         if (mobile) {
@@ -157,9 +164,31 @@ export default function OpenFormClient() {
         const profile = await liffManager.getProfile(); // in-client or PC-login 後なので prompt は出ない想定
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
         const uid = profile.userId;
-        // 6) prefill を作って即遷移（最短経路）
-        // const base = viewUrl.split("?")[0];
-        // const prefill = `${base}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
+        // 6) まず“最終的に絶対効く”プレフィルURLを作っておく（保険）
+        const viewBase = viewUrl.split("?")[0];
+        const prefill = `${viewBase}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
+
+        // 7) トークン方式（サーバ経由）を走らせつつ、1.2秒でフォールバック
+        const issuePromise = (async () => {
+          const res = await fetch(`${base}/api/token/issue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lid, uid }),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok || !j?.ok || !j.redirectUrl) throw new Error(j?.error || 'TOKEN_ISSUE_FAILED');
+          return j.redirectUrl as string;
+        })();
+
+        const timeoutPromise = new Promise<string>((resolve) => {
+          setTimeout(() => resolve(prefill), 1200); // 1.2s 超えたら即プレフィルへ
+        });
+
+        const dest = await Promise.race([issuePromise, timeoutPromise])
+          .catch(() => prefill); // 失敗時もプレフィル
+
+        sessionStorage.setItem(FORM_REDIRECTED_KEY, '1');
+        location.replace(dest.startsWith('http') ? dest : `${base}${dest}`);
         // // 8) 直ちにフォームへ
         // sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
         // location.replace(prefill);
