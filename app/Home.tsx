@@ -122,7 +122,7 @@ export default function Home() {
 
   const [formUrl, setFormUrl] = useState('');
   const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('admin');
-  const [isAutoMode, setIsAutoMode] = useState(true);
+  const [isAutoMode, setIsAutoMode] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
@@ -284,7 +284,6 @@ export default function Home() {
             }
             setIsTab(parsed.isTab);
             setIsAdmin(parsed.isAdmin);
-            console.log(parsed.isAutoMode)
             setIsAutoMode(parsed.isAutoMode);
             sessionStorage.removeItem('appState'); // 復元後は削除
           }
@@ -1261,72 +1260,74 @@ export default function Home() {
           )}
 
           {/* ページャ（元のまま） */}
-          {formUrl && isAutoMode ? (
-            isGeneratingUrl ? (
-              <div className="text-center">
-                <h3 className="text-base font-semibold">
-                  <span className="text-blue-600">フォームへ移動中...</span>
-                </h3>
-              </div>
+          {formUrl
+            // && isAutoMode
+            ? (
+              isGeneratingUrl ? (
+                <div className="text-center">
+                  <h3 className="text-base font-semibold">
+                    <span className="text-blue-600">フォームへ移動中...</span>
+                  </h3>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <h3 className="text-base font-semibold">
+                    <span className="text-blue-600">フォームに移動します…</span>
+                  </h3>
+                  <p className="text-sm mt-2">
+                    自動で開かない場合は
+                    {' '}
+                    <a
+                      href={(generatedUrl || formUrl) ?? '#'}
+                      className="text-blue-600 underline"
+                    >
+                      こちらをタップ
+                    </a>
+                  </p>
+                </div>
+              )
             ) : (
-              <div className="text-center">
-                <h3 className="text-base font-semibold">
-                  <span className="text-blue-600">フォームに移動します…</span>
-                </h3>
-                <p className="text-sm mt-2">
-                  自動で開かない場合は
-                  {' '}
-                  <a
-                    href={(generatedUrl || formUrl) ?? '#'}
-                    className="text-blue-600 underline"
-                  >
-                    こちらをタップ
-                  </a>
-                </p>
+              <div className="flex flex-row justify-center m-4">
+                <div className="px-2">
+                  {isTab === "top" ? (
+                    <button className="rounded-full h-5 w-5 bg-primary" />
+                  ) : (
+                    <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
+                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                    </button>
+                  )}
+                </div>
+                <div className="px-2">
+                  {isTab === "admin" ? (
+                    <button className="rounded-full h-5 w-5 bg-primary" />
+                  ) : (
+                    <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
+                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                    </button>
+                  )}
+                </div>
+                {/* {notifyEnabled && ( */}
+                <div className="px-2">
+                  {isTab === "secret" ? (
+                    <button className="rounded-full h-5 w-5 bg-primary" />
+                  ) : (
+                    <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
+                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                    </button>
+                  )}
+                </div>
+                {/* )} */}
+                <div className="px-2">
+                  {isTab === "howto" ? (
+                    <button className="rounded-full h-5 w-5 bg-primary" />
+                  ) : (
+                    <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
+                      <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                    </button>
+                  )}
+                </div>
               </div>
-            )
-          ) : (
-            <div className="flex flex-row justify-center m-4">
-              <div className="px-2">
-                {isTab === "top" ? (
-                  <button className="rounded-full h-5 w-5 bg-primary" />
-                ) : (
-                  <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  </button>
-                )}
-              </div>
-              <div className="px-2">
-                {isTab === "admin" ? (
-                  <button className="rounded-full h-5 w-5 bg-primary" />
-                ) : (
-                  <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  </button>
-                )}
-              </div>
-              {/* {notifyEnabled && ( */}
-              <div className="px-2">
-                {isTab === "secret" ? (
-                  <button className="rounded-full h-5 w-5 bg-primary" />
-                ) : (
-                  <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  </button>
-                )}
-              </div>
-              {/* )} */}
-              <div className="px-2">
-                {isTab === "howto" ? (
-                  <button className="rounded-full h-5 w-5 bg-primary" />
-                ) : (
-                  <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
-                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+            )}
         </main>
 
         <footer className="max-w-md mx-auto px-4 py-6 text-center">
