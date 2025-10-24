@@ -55,31 +55,6 @@ function getUidFromQuery(): string {
   const sp = new URLSearchParams(window.location.search);
   return sp.get('uid') || '';
 }
-////////////////////////////////////////////
-// ★ 指定の固定フォールバック
-// const FALLBACK_LIFF_ID = new URLSearchParams(window.location.search).get('liff') || '';
-// ✅ URLの末尾やクエリから動的に LIFF ID を取得し、FALLBACK_LIFF_ID に代入
-// 前のやつ
-// const FALLBACK_LIFF_ID = (() => {
-//   if (typeof window === 'undefined') return ''; // SSR対策
-
-//   const url = new URL(window.location.href);
-
-//   // ① クエリパラメータ ?liff=xxxx の場合
-//   const fromQuery = url.searchParams.get('liff');
-//   if (fromQuery) return fromQuery;
-
-//   // ② URLの末尾が xxxx の場合（例: /open/2008088055-gKXl6W1p）
-//   const pathParts = url.pathname.split('/');
-//   const lastPart = pathParts[pathParts.length - 1];
-//   if (lastPart && /^[0-9A-Za-z-]+$/.test(lastPart)) return lastPart;
-
-//   // ③ 該当なし
-//   return '';
-// })();
-
-// console.log('FALLBACK_LIFF_ID:', FALLBACK_LIFF_ID);
-
 
 /* ------------------------------ Zod Schemas -------------------------------- */
 
@@ -141,9 +116,9 @@ export default function Home() {
   const [formDescription, setFormDescription] = useState('');
   const [formBgcolor, setFormBgcolor] = useState('#555555');
   // const [notifyEnabled, setNotifyEnabled] = useState(false);
-  const [lineUserId, setLineUserId] = useState<string>("");
+  // const [lineUserId, setLineUserId] = useState<string>("");
   const [signedLink, setSignedLink] = useState<string>("");
-  const [basicId, setBasicId] = useState<string>("");
+  // const [basicId, setBasicId] = useState<string>("");
   const [overrideUserEntry, setOverrideUserEntry] = useState<string>('');
   const [entryEditable, setEntryEditable] = useState<boolean>(false);
 
@@ -495,7 +470,7 @@ export default function Home() {
     },
     onSuccess: () => {
       showToast('ENTRY を保存しました', 'success');
-      setEntryEditable(false);
+      // setEntryEditable(false);
       queryClientLocal.invalidateQueries({ queryKey: ['/api/entry-mappings', liffIdForEntry, formIdForEntry] });
     },
     onError: (e: any) => showToast(`保存に失敗: ${e?.message || 'unknown'}`, 'error'),
