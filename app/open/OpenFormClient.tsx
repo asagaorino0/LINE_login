@@ -125,52 +125,23 @@ export default function OpenFormClient() {
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
         const uid = profile.userId;
         // 6) prefill を作って即遷移（最短経路）
-        const base = viewUrl.split("?")[0];
-        const prefill = `${base}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
-        // // // 7) 付随処理は fire-and-forget（await しない）
-        // // if (!sentRef.current && link.notify === 1) {
-        // //   sentRef.current = true;
-        // //   const payload = {
-        // //     userId: uid,
-        // //     type: "card" as const,
-        // //     formUrl: prefill,
-        // //     title: link.title || "Googleフォーム",
-        // //     desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
-        // //     bgcolor: link.bgcolor,
-        // //     lid,
-        // //   };
-        // //   try {
-        // //     let sent = false;
-        // //     if ("sendBeacon" in navigator) {
-        // //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        // //       sent = navigator.sendBeacon("/api/line", blob);
-        // //     }
-        // //     if (!sent) {
-        // //       fetch("/api/line", {
-        // //         method: "POST",
-        // //         headers: { "Content-Type": "application/json" },
-        // //         body: JSON.stringify(payload),
-        // //         keepalive: true,
-        // //       }).catch(() => { });
-        // //     }
-        // //   } catch { }
-        // // }
-        // try {
-        //   fetch("/api/line-users", {
-        //     method: "POST",
-        //     headers: { "Content-Type": "application/json" },
-        //     credentials: "include",
-        //     body: JSON.stringify({
-        //       lineUserId: uid,
-        //       displayName: profile.displayName,
-        //       pictureUrl: profile.pictureUrl ?? null,
-        //     }),
-        //     keepalive: true,
-        //   }).catch(() => { });
-        // } catch { }
-        // 8) 直ちにフォームへ
-        sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
-        location.replace(prefill);
+        // const base = viewUrl.split("?")[0];
+        // const prefill = `${base}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
+        // // 8) 直ちにフォームへ
+        // sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
+        // location.replace(prefill);
+        // 1) サーバで発行（短期トークン）
+        const issue = await fetch('/api/token/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lid, uid }),
+        });
+        const j = await issue.json();
+        if (!issue.ok || !j?.ok) throw new Error(j?.error || 'TOKEN_ISSUE_FAILED');
+
+        // 2) サーバ側 302 経由でフォームへ（UIDはURLに出ない）
+        sessionStorage.setItem(FORM_REDIRECTED_KEY, '1');
+        location.replace(j.redirectUrl);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));
