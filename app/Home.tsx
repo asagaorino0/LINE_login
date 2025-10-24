@@ -511,7 +511,6 @@ export default function Home() {
       return;
     }
     if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
-
     detectTimerRef.current = window.setTimeout(async () => {
       setIsDetecting(true);
       setDetectionError(null);
@@ -519,7 +518,7 @@ export default function Home() {
         const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
         if (res?.success && res.userId) {
           setDetectedEntries({ userId: res.userId });
-          setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
+          // setLastDetectionResult({ userId: res.userId, formUrl: viewUrlNormalized });
           if (res.title) setFormTitle(res.title);
           if (res.description) setFormDescription(res.description);
         } else {
