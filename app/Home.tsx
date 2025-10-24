@@ -341,17 +341,17 @@ export default function Home() {
   }, [liffSettingsQuery.data, liffIdForm]);
 
   // secrets 指紋（存在確認）
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/line-secrets", { cache: "no-store" });
-        if (r.ok) {
-          const j = await r.json();
-          if (j?.exists) setFingerprints(j.fingerprints ?? null);
-        }
-      } catch {/* noop */ }
-    })();
-  }, []);
+  // useEffect(() => {
+  //   (async () => {
+  //     try {
+  //       const r = await fetch("/api/line-secrets", { cache: "no-store" });
+  //       if (r.ok) {
+  //         const j = await r.json();
+  //         if (j?.exists) setFingerprints(j.fingerprints ?? null);
+  //       }
+  //     } catch {/* noop */ }
+  //   })();
+  // }, []);
 
   // 管理者 cookie 設定
   const firedAdminLoginRef = useRef(false);
@@ -383,38 +383,38 @@ export default function Home() {
   }, [userProfile?.userId, setAdminCookie]);
 
   // アカウント一覧（admin タブ時）
-  useEffect(() => {
-    if (isTab === "top" || !adminReady) {
-      // 認証未完了時は一覧を空にしておく（他人のが見えないように）
-      setAccounts([]);
-      setSelectedBasicId("");
-      return;
-    }
-    let aborted = false;
-    (async () => {
-      try {
-        const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
-        if (aborted) return;
-        if (r.status === 401) { setAccounts([]); setSelectedBasicId(""); return; }
-        const j = await r.json();
-        const raw = Array.isArray(j?.items) ? j.items : [];
-        const normalized: Account[] = raw
-          .map((a: any): Account => ({
-            basicId: typeof a?.basicId === "string" ? a.basicId : "",
-            channelName: typeof a?.channelName === "string" ? a.channelName : undefined,
-            channelId: typeof a?.channelId === "string" ? a.channelId : undefined,
-          }))
-          .filter((a: { basicId: string }) => a.basicId !== "");
-        setAccounts(normalized);
-        setBasicId(normalized[0]?.basicId ?? "");
-        setSelectedBasicId((prev) => prev || (normalized[0]?.basicId ?? ""));
-      } catch {
-        if (!aborted) { setAccounts([]); setSelectedBasicId(""); }
-      }
-    })();
+  // useEffect(() => {
+  //   if (isTab === "top" || !adminReady) {
+  //     // 認証未完了時は一覧を空にしておく（他人のが見えないように）
+  //     setAccounts([]);
+  //     setSelectedBasicId("");
+  //     return;
+  //   }
+  //   let aborted = false;
+  //   (async () => {
+  //     try {
+  //       const r = await fetch("/api/line-secrets?mine=1", { credentials: "include" });
+  //       if (aborted) return;
+  //       if (r.status === 401) { setAccounts([]); setSelectedBasicId(""); return; }
+  //       const j = await r.json();
+  //       const raw = Array.isArray(j?.items) ? j.items : [];
+  //       const normalized: Account[] = raw
+  //         .map((a: any): Account => ({
+  //           basicId: typeof a?.basicId === "string" ? a.basicId : "",
+  //           channelName: typeof a?.channelName === "string" ? a.channelName : undefined,
+  //           channelId: typeof a?.channelId === "string" ? a.channelId : undefined,
+  //         }))
+  //         .filter((a: { basicId: string }) => a.basicId !== "");
+  //       setAccounts(normalized);
+  //       setBasicId(normalized[0]?.basicId ?? "");
+  //       setSelectedBasicId((prev) => prev || (normalized[0]?.basicId ?? ""));
+  //     } catch {
+  //       if (!aborted) { setAccounts([]); setSelectedBasicId(""); }
+  //     }
+  //   })();
 
-    return () => { aborted = true; };
-  }, [isTab, adminReady]);
+  //   return () => { aborted = true; };
+  // }, [isTab, adminReady]);
 
   // URL パラメータ→状態
   useEffect(() => {
@@ -824,17 +824,17 @@ export default function Home() {
     }
   };
   /* ---- preview card image ---- */
-  const previewUrl = useMemo(() => {
-    if (!viewUrlNormalized) return '';
-    const params = new URLSearchParams({
-      form: viewUrlNormalized,
-      title: formTitle || '',
-      desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
-      notify: '0',
-      v: String(Date.now()),
-    });
-    return `${window.location.origin}/api/link-preview?${params.toString()}`;
-  }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
+  // const previewUrl = useMemo(() => {
+  //   if (!viewUrlNormalized) return '';
+  //   const params = new URLSearchParams({
+  //     form: viewUrlNormalized,
+  //     title: formTitle || '',
+  //     desc: formDescription || '※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。',
+  //     notify: '0',
+  //     v: String(Date.now()),
+  //   });
+  //   return `${window.location.origin}/api/link-preview?${params.toString()}`;
+  // }, [viewUrlNormalized, formTitle, formDescription, notifyEnabled]);
 
   /* ---- send + navigate ---- */
   const sendLineMessageAndOpenForm = async (manual: boolean) => {
@@ -1221,6 +1221,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+
                   {isTab === 'top' && (
                     <>
                       <div className="p-3 bg-amber-50 rounded-lg mb-4">
@@ -1239,7 +1240,7 @@ export default function Home() {
                       </div>
 
                       <Button
-                        onClick={() => { setIsAdmin(true), setIsTab('admin') }}
+                        onClick={() => { setIsAdmin(true); setIsTab('admin'); }}
                         variant="default"
                         size="sm"
                         className="w-full mt-2 text-green-700 border-blue-300 hover:bg-blue-700 text-white"
@@ -1253,56 +1254,81 @@ export default function Home() {
               </Card>
             </>
           )}
+
           {isTab === 'secret' && (
-            <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true) }}
-              formUrl={formUrl}
-            />
+            <LineSettingsClient onClick={() => { setIsTab('admin'); setIsAdmin(true); }} formUrl={formUrl} />
           )}
           {isTab === 'howto' && (
-            <Howto onClick={() => { setIsTab('admin'), setIsAdmin(true) }} />
+            <Howto onClick={() => { setIsTab('admin'); setIsAdmin(true); }} />
           )}
 
           {/* ページャ（元のまま） */}
-          <div className="flex flex-row justify-center m-4">
-            <div className="px-2">
-              {isTab === "top" ? (
-                <button className="rounded-full h-5 w-5 bg-primary" />
-              ) : (
-                <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>
-              )}
+          {formUrl && isAutoMode ? (
+            isGeneratingUrl ? (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームへ移動中...</span>
+                </h3>
+              </div>
+            ) : (
+              <div className="text-center">
+                <h3 className="text-base font-semibold">
+                  <span className="text-blue-600">フォームに移動します…</span>
+                </h3>
+                <p className="text-sm mt-2">
+                  自動で開かない場合は
+                  {' '}
+                  <a
+                    href={(generatedUrl || formUrl) ?? '#'}
+                    className="text-blue-600 underline"
+                  >
+                    こちらをタップ
+                  </a>
+                </p>
+              </div>
+            )
+          ) : (
+            <div className="flex flex-row justify-center m-4">
+              <div className="px-2">
+                {isTab === "top" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("top"), setIsAdmin(false) }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              <div className="px-2">
+                {isTab === "admin" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              {/* {notifyEnabled && ( */}
+              <div className="px-2">
+                {isTab === "secret" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
+              {/* )} */}
+              <div className="px-2">
+                {isTab === "howto" ? (
+                  <button className="rounded-full h-5 w-5 bg-primary" />
+                ) : (
+                  <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
+                    <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="px-2">
-              {isTab === "admin" ? (
-                <button className="rounded-full h-5 w-5 bg-primary" />
-              ) : (
-                <button onClick={() => { setIsTab("admin"), setIsAdmin(true) }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>
-              )}
-            </div>
-            {/* {notifyEnabled && ( */}
-            <div className="px-2">
-              {isTab === "secret" ? (
-                <button className="rounded-full h-5 w-5 bg-primary" />
-              ) : (
-                <button onClick={() => { setIsTab("secret"); setIsAdmin(false); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>
-              )}
-            </div>
-            {/* )} */}
-            <div className="px-2">
-              {isTab === "howto" ? (
-                <button className="rounded-full h-5 w-5 bg-primary" />
-              ) : (
-                <button onClick={() => { setIsTab("howto"); setIsAdmin(false); }}>
-                  <div className="rounded-full h-3 w-3 border border-1 border-primary bg-white" />
-                </button>
-              )}
-            </div>
-          </div>
+          )}
         </main>
 
         <footer className="max-w-md mx-auto px-4 py-6 text-center">
