@@ -167,7 +167,21 @@ export default function OpenFormClient() {
           setTimeout(() => resolve(prefill), 1200);
         });
 
-        const dest = await Promise.race([issuePromise, timeoutPromise]).catch(() => prefill);
+        let dest = await Promise.race([issuePromise, timeoutPromise]).catch(() => prefill);
+
+        // ★★ ここを追加：モバイルは “確実に” プレフィルで外部ブラウザを開く
+        if (isMobileLike()) {
+          try {
+            // LINE 内でクエリが落ちる端末対策：外部ブラウザで直接プレフィルを開く
+            (window as any).liff?.openWindow?.({ url: prefill, external: true });
+            sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
+            return;
+          } catch {
+            // liff.openWindow が使えない場合は通常遷移を続行
+            dest = prefill;
+          }
+        }
+
 
         // ★ デバッグ：最終遷移URLを出力
         console.log("[OPEN] redirect to:", dest);
