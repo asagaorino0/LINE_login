@@ -127,47 +127,47 @@ export default function OpenFormClient() {
         // 6) prefill を作って即遷移（最短経路）
         const base = viewUrl.split("?")[0];
         const prefill = `${base}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
-        // // 7) 付随処理は fire-and-forget（await しない）
-        // if (!sentRef.current && link.notify === 1) {
-        //   sentRef.current = true;
-        //   const payload = {
-        //     userId: uid,
-        //     type: "card" as const,
-        //     formUrl: prefill,
-        //     title: link.title || "Googleフォーム",
-        //     desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
-        //     bgcolor: link.bgcolor,
-        //     lid,
-        //   };
-        //   try {
-        //     let sent = false;
-        //     if ("sendBeacon" in navigator) {
-        //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        //       sent = navigator.sendBeacon("/api/line", blob);
-        //     }
-        //     if (!sent) {
-        //       fetch("/api/line", {
-        //         method: "POST",
-        //         headers: { "Content-Type": "application/json" },
-        //         body: JSON.stringify(payload),
-        //         keepalive: true,
-        //       }).catch(() => { });
-        //     }
-        //   } catch { }
-        // }
-        try {
-          fetch("/api/line-users", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              lineUserId: uid,
-              displayName: profile.displayName,
-              pictureUrl: profile.pictureUrl ?? null,
-            }),
-            keepalive: true,
-          }).catch(() => { });
-        } catch { }
+        // // // 7) 付随処理は fire-and-forget（await しない）
+        // // if (!sentRef.current && link.notify === 1) {
+        // //   sentRef.current = true;
+        // //   const payload = {
+        // //     userId: uid,
+        // //     type: "card" as const,
+        // //     formUrl: prefill,
+        // //     title: link.title || "Googleフォーム",
+        // //     desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
+        // //     bgcolor: link.bgcolor,
+        // //     lid,
+        // //   };
+        // //   try {
+        // //     let sent = false;
+        // //     if ("sendBeacon" in navigator) {
+        // //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        // //       sent = navigator.sendBeacon("/api/line", blob);
+        // //     }
+        // //     if (!sent) {
+        // //       fetch("/api/line", {
+        // //         method: "POST",
+        // //         headers: { "Content-Type": "application/json" },
+        // //         body: JSON.stringify(payload),
+        // //         keepalive: true,
+        // //       }).catch(() => { });
+        // //     }
+        // //   } catch { }
+        // // }
+        // try {
+        //   fetch("/api/line-users", {
+        //     method: "POST",
+        //     headers: { "Content-Type": "application/json" },
+        //     credentials: "include",
+        //     body: JSON.stringify({
+        //       lineUserId: uid,
+        //       displayName: profile.displayName,
+        //       pictureUrl: profile.pictureUrl ?? null,
+        //     }),
+        //     keepalive: true,
+        //   }).catch(() => { });
+        // } catch { }
         // 8) 直ちにフォームへ
         sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
         location.replace(prefill);
