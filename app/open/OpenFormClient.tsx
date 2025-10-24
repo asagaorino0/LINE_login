@@ -87,6 +87,18 @@ export default function OpenFormClient() {
         const lid = qs.get("lid");
         const entryFromUrl = qs.get("entry");
         const liffFromUrl = qs.get("liff");
+
+        // 後で消す！！
+        // 🔍 スマホで確認できるように一時的にalertを出す
+        alert(
+          `🔍 LIFF デバッグ情報\n\n` +
+          `lid: ${lid ?? "(null)"}\n` +
+          `entry: ${entryFromUrl ?? "(null)"}\n` +
+          `liff: ${liffFromUrl ?? "(null)"}\n\n` +
+          `URL: ${location.href}`
+        );
+
+
         console.log("[DEBUG] lid:", lid, "entry:", entryFromUrl, "liff:", liffFromUrl);
 
         if (!lid) throw new Error("NO_LID_IN_URL");
