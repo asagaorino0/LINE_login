@@ -14,22 +14,52 @@ function isMobileLike() {
   return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
 }
 
-/* ---- 1) LIFF の liff.state を通常クエリに復元（★replaceは1回だけ） ---- */
+/* ---- 1) LIFF の liff.state を通常クエリに復元（多段 decode 対応） ---- */
 (function normalizeLiffStateOnce() {
   if (typeof window === "undefined") return;
+
+  // 何度も発火しないように（Safari/LINEでも効くよう localStorage）
+  try {
+    if (localStorage.getItem("_liff_state_normalized") === "1") return;
+  } catch { }
+
   try {
     const url = new URL(window.location.href);
-    const state = url.searchParams.get("liff.state");
-    if (state) {
-      const raw = state.startsWith("?") ? state.slice(1) : state;
-      const s = new URLSearchParams(raw);
-      const next = new URL(url.origin + url.pathname);
-      s.forEach((v, k) => next.searchParams.set(k, v));
-      // ★ここは1回だけ
-      window.location.replace(next.toString());
-    }
-  } catch { }
+    const stateRaw = url.searchParams.get("liff.state");
+    if (!stateRaw) return;
+
+    // %xx が残っていたら decode。二重/三重エンコードも安全に剥がす
+    const safeDecode = (s: string) => {
+      try {
+        let prev = s, cur = decodeURIComponent(s);
+        // decode しても変わらなくなるまで繰り返す（最大3回くらいで十分）
+        for (let i = 0; i < 3 && cur !== prev; i++) {
+          prev = cur;
+          cur = decodeURIComponent(cur);
+        }
+        return cur;
+      } catch {
+        return s;
+      }
+    };
+
+    const decoded = safeDecode(stateRaw);
+    // 先頭 ? を剥がす
+    const raw = decoded.startsWith("?") ? decoded.slice(1) : decoded;
+
+    // liff.state の中身を通常のクエリに展開
+    const stateQs = new URLSearchParams(raw);
+    const next = new URL(url.origin + url.pathname);
+    stateQs.forEach((v, k) => next.searchParams.set(k, v));
+
+    try { localStorage.setItem("_liff_state_normalized", "1"); } catch { }
+    // 履歴汚さずに置き換え
+    window.location.replace(next.toString());
+  } catch {
+    // noop
+  }
 })();
+
 
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
@@ -72,17 +102,15 @@ export default function OpenFormClient() {
         const lid = qs.get("lid");
         const entryFromUrl = qs.get("entry");
         const liffFromUrl = qs.get("liff");////未使用
-
-
-        // 後で消す！！
-        // 🔍 スマホで確認できるように一時的にalertを出す
-        alert(
-          `🔍 LIFF デバッグ情報\n\n` +
-          `lid: ${lid ?? "(null)"}\n` +
-          `entry: ${entryFromUrl ?? "(null)"}\n` +
-          `liff: ${liffFromUrl ?? "(null)"}\n\n` +
-          `URL: ${location.href}`
-        );
+        // // 後で消す！！
+        // // 🔍 スマホで確認できるように一時的にalertを出す
+        // alert(
+        //   `🔍 LIFF デバッグ情報\n\n` +
+        //   `lid: ${lid ?? "(null)"}\n` +
+        //   `entry: ${entryFromUrl ?? "(null)"}\n` +
+        //   `liff: ${liffFromUrl ?? "(null)"}\n\n` +
+        //   `URL: ${location.href}`
+        // );
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         const base = getBaseUrl() || location.origin;
