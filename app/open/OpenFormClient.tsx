@@ -13,6 +13,39 @@ function isMobileLike() {
   const ua = navigator.userAgent || "";
   return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
 }
+// 先頭付近のどこか（コンポーネントの外でも中でもOK）
+function decodeDeep(s: string) {
+  try {
+    let prev = s, cur = decodeURIComponent(s);
+    for (let i = 0; i < 3 && cur !== prev; i++) { prev = cur; cur = decodeURIComponent(cur); }
+    return cur;
+  } catch { return s; }
+}
+
+function parseAllParams(): URLSearchParams {
+  const url = new URL(window.location.href);
+
+  // 1) 通常の search
+  const params = new URLSearchParams(url.search);
+
+  // 2) liff.state（多段 decode）
+  const stateRaw = url.searchParams.get("liff.state");
+  if (stateRaw) {
+    const raw = decodeDeep(stateRaw);
+    const s2 = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
+    s2.forEach((v, k) => params.set(k, v));
+  }
+
+  // 3) hash にクエリが乗ってくる環境にも対応（例: #?lid=...）
+  if (url.hash && url.hash.includes("=")) {
+    const h = url.hash.replace(/^#/, "");
+    const hq = new URLSearchParams(h.startsWith("?") ? h.slice(1) : h);
+    hq.forEach((v, k) => params.set(k, v));
+  }
+
+  return params;
+}
+
 
 /* ---- 1) LIFF の liff.state を通常クエリに復元（多段 decode 対応） ---- */
 (function normalizeLiffStateOnce() {
@@ -98,19 +131,20 @@ export default function OpenFormClient() {
   useEffect(() => {
     (async () => {
       try {
-        const qs = new URLSearchParams(location.search);
-        const lid = qs.get("lid");
-        const entryFromUrl = qs.get("entry");
-        const liffFromUrl = qs.get("liff");////未使用
-        // // 後で消す！！
-        // // 🔍 スマホで確認できるように一時的にalertを出す
-        // alert(
-        //   `🔍 LIFF デバッグ情報\n\n` +
-        //   `lid: ${lid ?? "(null)"}\n` +
-        //   `entry: ${entryFromUrl ?? "(null)"}\n` +
-        //   `liff: ${liffFromUrl ?? "(null)"}\n\n` +
-        //   `URL: ${location.href}`
-        // );
+        // ✅ ここを差し替え：最大5回、150ms間隔で lid を再取得（モバイルのレース対策）
+        let qs = parseAllParams();
+        let lid = qs.get("lid");
+        let entryFromUrl = qs.get("entry");
+        let liffFromUrl = qs.get("liff");
+
+        for (let i = 0; i < 5 && !lid; i++) {
+          await new Promise(r => setTimeout(r, 150));
+          qs = parseAllParams();
+          lid = qs.get("lid");
+          entryFromUrl = qs.get("entry");
+          liffFromUrl = qs.get("liff");
+        }
+
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         const base = getBaseUrl() || location.origin;
