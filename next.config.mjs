@@ -14,10 +14,10 @@ const csp = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    // 開発中に ngrok で /_next/* を読ませるため（本番には無関係）
-    allowedDevOrigins: ["https://a51cdea82302.ngrok-free.app/"],
-  },
+  // experimental: {
+  //   // 開発中に ngrok で /_next/* を読ませるため（本番には無関係）
+  //   // allowedDevOrigins: ["https://a51cdea82302.ngrok-free.app/"],
+  // },
   async headers() {
     return [
       {
