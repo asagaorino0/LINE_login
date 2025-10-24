@@ -122,7 +122,7 @@ export default function Home() {
 
   const [formUrl, setFormUrl] = useState('');
   const [isTab, setIsTab] = useState<'top' | 'secret' | 'admin' | 'howto'>('admin');
-  const [isAutoMode, setIsAutoMode] = useState(false);
+  const [isAutoMode, setIsAutoMode] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
@@ -284,6 +284,7 @@ export default function Home() {
             }
             setIsTab(parsed.isTab);
             setIsAdmin(parsed.isAdmin);
+            console.log(parsed.isAutoMode)
             setIsAutoMode(parsed.isAutoMode);
             sessionStorage.removeItem('appState'); // 復元後は削除
           }
