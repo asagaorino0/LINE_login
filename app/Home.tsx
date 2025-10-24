@@ -188,14 +188,11 @@ export default function Home() {
     mutationFn: async (data: LiffIdFormData) => {
       const response = await fetch('/api/liff-settings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(data),
       });
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       return response.json() as Promise<{ success: boolean; message?: string; error?: string }>;
     },
     onSuccess: async (result) => {
@@ -260,53 +257,53 @@ export default function Home() {
         setIsInitialized(true);
 
         // 外部ブラウザでもログインは有効。inClient の有無で“やること”だけ分岐
-        const inClient = liffManager.inClient();
-        if (liffManager.isLoggedIn()) {
-          const profile = await liffManager.getProfile();
-          if (profile) {
-            setUserProfile(profile);
-            setIsLoggedIn(true);
-            if (inClient) setLineUserId(profile.userId);       // UIDの「表示」だけクライアント内に限定
-            await apiRequest('POST', '/api/line-users', {
-              lineUserId: profile.userId,
-              displayName: profile.displayName,
-              pictureUrl: profile.pictureUrl || null,
-            });
-            // ログイン後に保存された画面状態を復元
-            try {
-              const sp = new URLSearchParams(location.search);
-              const tabFromUrl = (sp.get('tab') || '').toLowerCase();
-              const returnTab = sessionStorage.getItem('returnTab');
-              const savedState = sessionStorage.getItem('appState');
-              if (savedState) {
-                const parsed = JSON.parse(savedState);
-                // 🚩 URL または returnTab が admin のときは admin を強制
-                if (tabFromUrl === 'admin' || returnTab === 'admin') {
-                  parsed.isTab = 'admin';
-                  parsed.isAdmin = true;
-                }
-                setIsTab(parsed.isTab);
-                setIsAdmin(parsed.isAdmin);
-                setIsAutoMode(parsed.isAutoMode);
-                sessionStorage.removeItem('appState'); // 復元後は削除
-              }
-            } catch (error) {
-              console.error('🔄 [RESTORE] Failed to restore app state:', error);
+        // const inClient = liffManager.inClient();
+        // if (liffManager.isLoggedIn()) {
+        //   const profile = await liffManager.getProfile();
+        //   if (profile) {
+        //     setUserProfile(profile);
+        //     setIsLoggedIn(true);
+        //     if (inClient) setLineUserId(profile.userId);       // UIDの「表示」だけクライアント内に限定
+        // await apiRequest('POST', '/api/line-users', {
+        //   lineUserId: profile.userId,
+        //   displayName: profile.displayName,
+        //   pictureUrl: profile.pictureUrl || null,
+        // });
+        // ログイン後に保存された画面状態を復元
+        try {
+          const sp = new URLSearchParams(location.search);
+          const tabFromUrl = (sp.get('tab') || '').toLowerCase();
+          const returnTab = sessionStorage.getItem('returnTab');
+          const savedState = sessionStorage.getItem('appState');
+          if (savedState) {
+            const parsed = JSON.parse(savedState);
+            // 🚩 URL または returnTab が admin のときは admin を強制
+            if (tabFromUrl === 'admin' || returnTab === 'admin') {
+              parsed.isTab = 'admin';
+              parsed.isAdmin = true;
             }
-            // 初回ログイン時にLIFF IDを自動保存
-            const sp = new URLSearchParams(location.search);
-            const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
-            if (liffIdFromUrl && (liffSettingsQuery.isSuccess && !liffSettingsQuery.data?.hasLiffId)) {
-              try {
-                await apiRequest('POST', '/api/liff-settings', { liffId: liffIdFromUrl });
-                console.log('🔄 Auto-saved LIFF ID from URL to CosmosDB');
-                queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
-              } catch (error) {
-                console.error('Failed to auto-save LIFF ID:', error);
-              }
-            }
+            setIsTab(parsed.isTab);
+            setIsAdmin(parsed.isAdmin);
+            setIsAutoMode(parsed.isAutoMode);
+            sessionStorage.removeItem('appState'); // 復元後は削除
+          }
+        } catch (error) {
+          console.error('🔄 [RESTORE] Failed to restore app state:', error);
+        }
+        // 初回ログイン時にLIFF IDを自動保存
+        const sp = new URLSearchParams(location.search);
+        const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
+        if (liffIdFromUrl && (liffSettingsQuery.isSuccess && !liffSettingsQuery.data?.hasLiffId)) {
+          try {
+            await apiRequest('POST', '/api/liff-settings', { liffId: liffIdFromUrl });
+            console.log('🔄 Auto-saved LIFF ID from URL to CosmosDB');
+            queryClient.invalidateQueries({ queryKey: ['/api/liff-settings'] });
+          } catch (error) {
+            console.error('Failed to auto-save LIFF ID:', error);
           }
         }
+        // }
+        // }
       } catch (e) {
         console.error('LIFF initialization failed:', e);
         setError('LIFF初期化に失敗しました。ページをリロードしてください。');
@@ -325,9 +322,9 @@ export default function Home() {
   }, [isLoggedIn, isAdmin]);
 
   // whoami が未ログインなら画面上の UID をクリアしておく（他画面に備えて）
-  useEffect(() => {
-    if (!cookieInfo?.hasUid) setLineUserId('');
-  }, [cookieInfo?.hasUid]);
+  // useEffect(() => {
+  //   if (!cookieInfo?.hasUid) setLineUserId('');
+  // }, [cookieInfo?.hasUid]);
 
   // URLパラメータまたはサーバー設定からLIFF IDをフォームに自動入力
   useEffect(() => {
