@@ -140,7 +140,7 @@ export default function Home() {
   const [formTitle, setFormTitle] = useState('公式LINE連携_Googleフォーム');
   const [formDescription, setFormDescription] = useState('');
   const [formBgcolor, setFormBgcolor] = useState('#555555');
-  const [notifyEnabled, setNotifyEnabled] = useState(false);
+  // const [notifyEnabled, setNotifyEnabled] = useState(false);
   const [lineUserId, setLineUserId] = useState<string>("");
   const [signedLink, setSignedLink] = useState<string>("");
   const [basicId, setBasicId] = useState<string>("");
@@ -599,15 +599,15 @@ export default function Home() {
 
   useEffect(() => {
     if (isAutoMode && generatedUrl && !autoTriggeredRef.current) {
-      if (notifyEnabled) {
-        if (isLoggedIn && userProfile) {
-          autoTriggeredRef.current = true;
-          void sendLineMessageAndOpenForm(false);
-        }
-      } else {
-        autoTriggeredRef.current = true;
-        void sendLineMessageAndOpenForm(false);
-      }
+      // if (notifyEnabled) {
+      //   if (isLoggedIn && userProfile) {
+      //     autoTriggeredRef.current = true;
+      //     void sendLineMessageAndOpenForm(false);
+      //   }
+      // } else {
+      autoTriggeredRef.current = true;
+      void sendLineMessageAndOpenForm(false);
+      // }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -615,7 +615,7 @@ export default function Home() {
     isLoggedIn,
     userProfile?.userId,
     generatedUrl,
-    notifyEnabled///add
+    // notifyEnabled///add
   ]);
 
   // サーバから届いた liffId をフォームに反映
