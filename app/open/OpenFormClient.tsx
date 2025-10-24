@@ -14,6 +14,33 @@ function isMobileLike() {
   return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
 }
 
+(function normalizeLiffStateOnce() {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    const state = url.searchParams.get("liff.state");
+    const doneFlag = sessionStorage.getItem("_liff_state_normalized") === "1";
+
+    if (state && !doneFlag) {
+      // state は "?lid=...&entry=...&liff=..." のように先頭 ? が付くことがある
+      const raw = state.startsWith("?") ? state.slice(1) : state;
+      const s = new URLSearchParams(raw);
+
+      // 既存の search を消して、state の中身に置き換え
+      const next = new URL(url.origin + url.pathname);
+      s.forEach((v, k) => next.searchParams.set(k, v));
+
+      // もう一度ここに戻ってこないようフラグ
+      sessionStorage.setItem("_liff_state_normalized", "1");
+
+      // URL を正規化してから再読み込み（履歴は残さなくてOKなので replace）
+      window.location.replace(next.toString());
+    }
+  } catch {
+    // 失敗しても致命傷ではないので無視
+  }
+})();
+
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
