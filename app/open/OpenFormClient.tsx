@@ -57,7 +57,7 @@ export default function OpenFormClient() {
         const qs = new URLSearchParams(location.search);
         const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
-        const base = getBaseUrl();
+        const base = getBaseUrl() || location.origin;
 
         // 1) リンク情報（await 必須：formUrl / entry が必要）
         // const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include", cache: "no-store" });

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const token = signToken(payload, secret);
 
     // const base = process.env.BASE_URL?.replace(/\/+$/, '') || '';
-    const base = getBaseUrl();
+    const base = getBaseUrl() || location.origin;
     const redirectUrl = `${base}/r/${encodeURIComponent(token)}`;
 
     return NextResponse.json({ ok: true, token, redirectUrl, exp: payload.exp });
