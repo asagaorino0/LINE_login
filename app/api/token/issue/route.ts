@@ -15,6 +15,7 @@ async function fetchLinkByLid(lid: string) {
   const j = await r.json();
   return j?.ok ? j : null;
 }
+console.log("TOKEN_SECRET:", process.env.TOKEN_SECRET);
 
 export async function POST(req: NextRequest) {
   try {
