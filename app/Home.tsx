@@ -494,15 +494,16 @@ export default function Home() {
   };
 
   useEffect(() => {
+    console.log(viewUrlNormalized, formUrl)
     if (!isAdmin
       || isTab !== "admin"
-      || !formUrl
+      // || !formUrl
       // || !viewUrlNormalized
     ) return;
     (async () => {
       try {
         const res = await GoogleFormsManager.detectEntryIds(formUrl);
-        console.log(res?.title)
+        console.log(res?.title, viewUrlNormalized, formUrl)
         if (res?.title) setFormTitle(res.title);
       } catch (e) {
         console.warn("Title detection failed:", e);
