@@ -168,7 +168,7 @@ function onFormSubmit(e) {
   });
 
   // 通知本文を構築
-  let lines = ['📩 ${formTitleSafe}'];
+  let lines = ['📩 回答：${formTitleSafe}'];
   TARGET_TITLES.forEach(t => {
     const v = answers[t] || '（未入力）';
     lines.push('📝 ' + t + '：' + v);
