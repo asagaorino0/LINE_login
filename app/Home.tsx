@@ -503,7 +503,7 @@ export default function Home() {
     (async () => {
       try {
         const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
-        console.log(res?.title, 'V:', viewUrlNormalized, 'f:', formUrl)
+        console.log('T:', res?.title, 'V:', viewUrlNormalized, 'f:', formUrl)
         if (res?.title) setFormTitle(res.title);
       } catch (e) {
         console.warn("Title detection failed:", e);
