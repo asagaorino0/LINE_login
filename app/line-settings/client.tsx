@@ -17,8 +17,14 @@ import "../Timeline.css";
  */
 type GasLinkKind = "form" | "sheet";
 
-function buildGasCode(params: { titles: string[]; linkKind: GasLinkKind }) {
+function buildGasCode(params: { titles: string[]; linkKind: GasLinkKind; formTitle?: string }) {
   const { titles, linkKind } = params;
+
+  // フォールバック & エスケープ
+  const formTitleSafe = (params.formTitle?.trim() || "Googleフォーム")
+    .replace(/\\/g, "\\\\")   // バックスラッシュ
+    .replace(/`/g, "\\`")     // バッククォート
+    .replace(/\$/g, "\\$");   // ${...} 崩れ対策
 
   // 空・重複・前後空白を整理
   const cleaned = Array.from(
@@ -162,7 +168,7 @@ function onFormSubmit(e) {
   });
 
   // 通知本文を構築
-  let lines = ['📩 新しいフォーム回答'];
+  let lines = ['📩 ${formTitleSafe}'];
   TARGET_TITLES.forEach(t => {
     const v = answers[t] || '（未入力）';
     lines.push('📝 ' + t + '：' + v);
@@ -193,33 +199,19 @@ function sendLineMessage(token, user, message) {
   const res = UrlFetchApp.fetch(url, options);
   Logger.log('LINE push status: %s, body: %s', res.getResponseCode(), res.getContentText());
 }
-
-// === 任意：権限付与/疎通確認 ===
-function testPush() {
-  const LINE_TOKEN = props.getProperty('LINE_TOKEN') || '';
-  const LINE_USER_ID = props.getProperty('LINE_USER_ID') || '';
-  const FORM_URL = props.getProperty('FORM_URL') || '';
-  sendLineMessage(LINE_TOKEN, LINE_USER_ID, 'テスト送信です\\nFORM_URL: ' + (FORM_URL || '(未設定)'));
-}
 `;
 }
 
 /* ------------------------------ Component ------------------------------ */
 
-export default function LineSettingsClient({
-  onClick,
-  formUrl,
-}: {
-  onClick: () => void;
-  formUrl?: string;
-}) {
+export default function LineSettingsClient({ formTitle = "Googleフォーム" }: { formTitle?: string }) {
   // 複数タイトルを管理
   const [titles, setTitles] = useState<string[]>(["お名前"]);
   const [linkKind, setLinkKind] = useState<GasLinkKind>("form");
 
   const gasCode = useMemo(
-    () => buildGasCode({ titles, linkKind }),
-    [titles, linkKind]
+    () => buildGasCode({ titles, linkKind, formTitle }),
+    [titles, linkKind, formTitle]
   );
 
   // タイトル行を追加
