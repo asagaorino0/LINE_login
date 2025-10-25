@@ -340,14 +340,12 @@ export default function Home() {
   // URL パラメータ→状態
   useEffect(() => {
     if (pathname === '/open') return;
-    console.log(new URLSearchParams(window.location.search))
     const sp = new URLSearchParams(window.location.search);
     const lid = sp.get("lid");
     const formParam = sp.get("form");
     const notifyParam = sp.get("notify");
     const tabParam = (sp.get("tab") || "").toLowerCase();
     const entryParam = sp.get("entry");
-    console.log(entryParam, ensureEntryFormat(entryParam!))
 
     if (entryParam) setOverrideUserEntry(ensureEntryFormat(entryParam));
 
@@ -496,16 +494,21 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!isAdmin || isTab !== "admin" || !viewUrlNormalized) return;
+    if (!isAdmin
+      || isTab !== "admin"
+      || !formUrl
+      // || !viewUrlNormalized
+    ) return;
     (async () => {
       try {
-        const res = await GoogleFormsManager.detectEntryIds(viewUrlNormalized);
+        const res = await GoogleFormsManager.detectEntryIds(formUrl);
+        console.log(res?.title)
         if (res?.title) setFormTitle(res.title);
       } catch (e) {
         console.warn("Title detection failed:", e);
       }
     })();
-  }, [viewUrlNormalized, isAdmin, isTab]);
+  }, [viewUrlNormalized, isAdmin, isTab, formUrl]);
 
   useEffect(() => {
     (async () => {
