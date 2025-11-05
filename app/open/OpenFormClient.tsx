@@ -206,30 +206,18 @@ export default function OpenFormClient() {
 
         // 4) UID 取得
         const profile = await liffManager.getProfile();
+        console.log('[OPEN] LIFF Profile取得:', profile);
         if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
         const uid = profile.userId;
+        console.log('[OPEN] LINE UID:', uid);
 
-        // 5) フォームURL組み立て（保険のプレフィル）
+        // 5) フォームURL組み立て（プレフィル方式）
         const viewBase = viewUrl.split("?")[0];
         const prefill = `${viewBase}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
+        console.log('[OPEN] プレフィルURL:', prefill);
 
-        // 6) トークン方式と競合させる（どちらか早い方）
-        const issuePromise = (async () => {
-          const res = await fetch(`${base}/api/token/issue`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lid, uid }),
-          });
-          const j = await res.json().catch(() => ({}));
-          if (!res.ok || !j?.ok || !j.redirectUrl) throw new Error(j?.error || "TOKEN_ISSUE_FAILED");
-          return j.redirectUrl as string;
-        })();
-
-        const timeoutPromise = new Promise<string>((resolve) => {
-          setTimeout(() => resolve(prefill), 1200);
-        });
-
-        let dest = await Promise.race([issuePromise, timeoutPromise]).catch(() => prefill);
+        // 6) プレフィルURLを使用
+        let dest = prefill;
 
         // ★★ ここを追加：モバイルは “確実に” プレフィルで外部ブラウザを開く
         if (isMobileLike()) {
