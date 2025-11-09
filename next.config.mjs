@@ -1,26 +1,36 @@
 // next.config.mjs
-export default {
+const csp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.line-scdn.net https://cdn.ngrok.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob: https://*.line-scdn.net https://profile.line-scdn.net",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "connect-src 'self' https://access.line.me https://api.line.me https://liffsdk.line-scdn.net https://api.allorigins.win https://corsproxy.io",
+  "frame-src 'self' https://access.line.me https://accounts.google.com",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  experimental: {
+    // 開発中に ngrok で /_next/* を読ませるため（本番には無関係）
+    allowedDevOrigins: ["https://a51cdea82302.ngrok-free.app/"],
+  },
   async headers() {
     return [
       {
-        source: "/:path*",
+        // 全ページに CSP を付与
+        source: '/:path*',
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.line-scdn.net https://translate.googleapis.com https://www.gstatic.com",
-              "script-src-elem 'self' 'unsafe-inline' https://static.line-scdn.net https://translate.googleapis.com https://www.gstatic.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.gstatic.com",
-              "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.gstatic.com",
-              "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: https:",
-              "connect-src 'self' https://api.line.me https://static.line-scdn.net https:",
-              "frame-src 'self' https://liff.line.me https://access.line.me https://static.line-scdn.net",
-            ].join("; "),
-          },
+          { key: 'Content-Security-Policy', value: csp },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
         ],
       },
     ];
   },
 };
+
+export default nextConfig;
