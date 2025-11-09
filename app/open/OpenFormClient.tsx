@@ -3,243 +3,126 @@
 import { useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
-import { getBaseUrl } from "@/lib/getBaseUrl";
-
-const ONCE_KEY = "redirectedToLiff";
-const FORM_REDIRECTED_KEY = "redirectedToForm";
-
-function isMobileLike() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
-}
-// 先頭付近のどこか（コンポーネントの外でも中でもOK）
-function decodeDeep(s: string) {
-  try {
-    let prev = s, cur = decodeURIComponent(s);
-    for (let i = 0; i < 3 && cur !== prev; i++) { prev = cur; cur = decodeURIComponent(cur); }
-    return cur;
-  } catch { return s; }
-}
-
-function parseAllParams(): URLSearchParams {
-  const url = new URL(window.location.href);
-
-  // 1) 通常の search
-  const params = new URLSearchParams(url.search);
-
-  // 2) liff.state（多段 decode）
-  const stateRaw = url.searchParams.get("liff.state");
-  if (stateRaw) {
-    const raw = decodeDeep(stateRaw);
-    const s2 = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
-    s2.forEach((v, k) => params.set(k, v));
-  }
-
-  // 3) hash にクエリが乗ってくる環境にも対応（例: #?lid=...）
-  if (url.hash && url.hash.includes("=")) {
-    const h = url.hash.replace(/^#/, "");
-    const hq = new URLSearchParams(h.startsWith("?") ? h.slice(1) : h);
-    hq.forEach((v, k) => params.set(k, v));
-  }
-
-  return params;
-}
-
-
-/* ---- 1) LIFF の liff.state を通常クエリに復元（多段 decode 対応） ---- */
-(function normalizeLiffStateOnce() {
-  if (typeof window === "undefined") return;
-
-  // 何度も発火しないように（Safari/LINEでも効くよう localStorage）
-  try {
-    if (localStorage.getItem("_liff_state_normalized") === "1") return;
-  } catch { }
-
-  try {
-    const url = new URL(window.location.href);
-    const stateRaw = url.searchParams.get("liff.state");
-    if (!stateRaw) return;
-
-    // %xx が残っていたら decode。二重/三重エンコードも安全に剥がす
-    const safeDecode = (s: string) => {
-      try {
-        let prev = s, cur = decodeURIComponent(s);
-        // decode しても変わらなくなるまで繰り返す（最大3回くらいで十分）
-        for (let i = 0; i < 3 && cur !== prev; i++) {
-          prev = cur;
-          cur = decodeURIComponent(cur);
-        }
-        return cur;
-      } catch {
-        return s;
-      }
-    };
-
-    const decoded = safeDecode(stateRaw);
-    // 先頭 ? を剥がす
-    const raw = decoded.startsWith("?") ? decoded.slice(1) : decoded;
-
-    // liff.state の中身を通常のクエリに展開
-    const stateQs = new URLSearchParams(raw);
-    const next = new URL(url.origin + url.pathname);
-    stateQs.forEach((v, k) => next.searchParams.set(k, v));
-
-    try { localStorage.setItem("_liff_state_normalized", "1"); } catch { }
-    // 履歴汚さずに置き換え
-    window.location.replace(next.toString());
-  } catch {
-    // noop
-  }
-})();
-
 
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
-  const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
   const sentRef = useRef(false);
 
-  /* ---- 戻ってきたときは即閉じる ---- */
-  useEffect(() => {
-    const tryClose = () => {
-      const flagged = sessionStorage.getItem(FORM_REDIRECTED_KEY) === "1";
-      const fromForms = document.referrer.includes("docs.google.com/forms");
-      if (!flagged && !fromForms) return;
-      sessionStorage.removeItem(FORM_REDIRECTED_KEY);
-      try { (window as any).liff?.closeWindow?.(); } catch { }
-      try { window.close(); } catch { }
-      setTimeout(() => {
-        try { location.replace("about:blank"); } catch { }
-      }, 120);
-    };
-    tryClose();
-    const onPageShow = () => tryClose();
-    const onVisible = () => { if (document.visibilityState === "visible") tryClose(); };
-    const onFocus = () => tryClose();
-    window.addEventListener("pageshow", onPageShow);
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("pageshow", onPageShow);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, []);
+  // 通知送信（fetch 本線 / beacon フォールバック / 少し待つ）
+  async function sendNotifyCard(payload: any) {
+    try {
+      let ok = false;
+      try {
+        const r = await fetch("/api/line", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true,
+          credentials: "include",
+        });
+        ok = r.ok;
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          console.warn("[notify] fetch failed:", r.status, text);
+        }
+      } catch (e) {
+        console.warn("[notify] fetch threw:", e);
+      }
+      if (!ok && "sendBeacon" in navigator) {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        ok = navigator.sendBeacon("/api/line", blob);
+      }
+      await new Promise((r) => setTimeout(r, ok ? 400 : 900));
+    } catch (e) {
+      console.warn("[notify] failed:", e);
+    }
+  }
 
-  /* ---- 主要フロー ---- */
   useEffect(() => {
     (async () => {
       try {
-        // ✅ ここを差し替え：最大5回、150ms間隔で lid を再取得（モバイルのレース対策）
-        let qs = parseAllParams();
-        let lid = qs.get("lid");
-        let entryFromUrl = qs.get("entry");
-        let liffFromUrl = qs.get("liff");
+        const qs = new URLSearchParams(location.search);
 
-        for (let i = 0; i < 5 && !lid; i++) {
-          await new Promise(r => setTimeout(r, 150));
-          qs = parseAllParams();
-          lid = qs.get("lid");
-          entryFromUrl = qs.get("entry");
-          liffFromUrl = qs.get("liff");
-        }
-
+        // --- 必須: lid ---
+        const lid = (qs.get("lid") || "").trim();
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        const base = getBaseUrl() || location.origin;
-
-        // 1) リンク情報
-        const linkResp = await fetch(`${base}/api/links/${lid}`, {
+        // --- 1) リンク情報 ---
+        const linkResp = await fetch(`/api/links/${encodeURIComponent(lid)}`, {
           credentials: "include",
           cache: "no-store",
         });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        // 2) entry 決定
-        const entry =
-          entryFromUrl
-            ? (entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`)
-            : (link.entry ? (String(link.entry).startsWith("entry.") ? String(link.entry) : `entry.${link.entry}`) : null);
-        if (!entry) throw new Error("ENTRY_ID_MISSING");
+        // --- 2) LIFF ID（URL > link.liffId > env）---
+        const liffIdFromQuery = (qs.get("liff") || qs.get("liffId") || "").trim();
+        const liffToUse =
+          liffIdFromQuery ||
+          (typeof link.liffId === "string" ? link.liffId : "") ||
+          (process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID || "");
+        if (!liffToUse) throw new Error("LIFF ID が未設定です。");
 
-        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
-
-        // 3) LIFF 初期化
-        const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
-        const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
-        if (!liffToUse) throw new Error("LIFF_ID_MISSING");
-
-        setLiffIdForButton(liffToUse);
         const ok = await liffManager.init({ liffId: liffToUse });
-        if (!ok) throw new Error("LIFF_INIT_FAILED");
+        if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        const mobile = isMobileLike();
+        // --- 3) LINE アプリ内か？ ---
         const inClient =
           typeof (window as any).liff?.isInClient === "function"
             ? (window as any).liff.isInClient()
             : (liffManager as any).isInClient?.() ?? false;
 
-        if (mobile) {
-          if (!inClient) {
-            const already = sessionStorage.getItem(ONCE_KEY) === "1";
-            if (!already) {
-              sessionStorage.setItem(ONCE_KEY, "1");
-              const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
-              location.replace(universal);
-              return;
-            } else {
-              setShowOpenInLine(true);
-              return;
-            }
-          }
-          sessionStorage.removeItem(ONCE_KEY);
-        } else {
-          const isLoggedIn =
-            (window as any).liff?.isLoggedIn?.() ?? (liffManager as any).isLoggedIn?.() ?? false;
-          if (!isLoggedIn) {
-            (window as any).liff?.login?.({ redirectUri: location.href });
-            return;
-          }
+        // in-client かつ未ログインならサイレント SSO（prompt:none）
+        if (inClient && !(window as any).liff?.isLoggedIn?.()) {
+          await (window as any).liff.login({ redirectUri: location.href, prompt: "none" });
+          return; // ここでリダイレクト→復帰後に以下が続行
         }
 
-        // 4) UID 取得
-        const profile = await liffManager.getProfile();
-        console.log('[OPEN] LIFF Profile取得:', profile);
-        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
-        const uid = profile.userId;
-        console.log('[OPEN] LINE UID:', uid);
+        // --- 4) プロフィール（in-client ならUIDが取れる）---
+        const profile = await liffManager.getProfile().catch(() => null);
+        const uid = profile?.userId || "";
 
-        // 5) フォームURL組み立て（プレフィル方式）
-        const viewBase = viewUrl.split("?")[0];
-        const prefill = `${viewBase}?usp=pp_url&${entry}=${encodeURIComponent(uid)}`;
-        console.log('[OPEN] プレフィルURL:', prefill);
+        // --- 5) Google フォーム URL（view に正規化）---
+        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
+        const baseForm = viewUrl.split("?")[0];
 
-        // 6) プレフィルURLを使用
-        let dest = prefill;
-
-        // ★★ ここを追加：モバイルは “確実に” プレフィルで外部ブラウザを開く
-        if (isMobileLike()) {
-          try {
-            // LINE 内でクエリが落ちる端末対策：外部ブラウザで直接プレフィルを開く
-            (window as any).liff?.openWindow?.({ url: prefill, external: true });
-            sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
-            return;
-          } catch {
-            // liff.openWindow が使えない場合は通常遷移を続行
-            dest = prefill;
-          }
+        // --- 6) entry は “必ず URL からのみ取得” ---
+        // 例: ?entry=entry.1587760013 または ?entry=1587760013 どちらも許可
+        const entryRaw = (qs.get("entry") || "").trim();
+        let entryKey: string | null = null;
+        if (entryRaw) {
+          entryKey = entryRaw.startsWith("entry.") ? entryRaw : `entry.${entryRaw}`;
+          // 明らかに不正な値は破棄
+          if (!/^entry\.\d{5,}$/.test(entryKey)) entryKey = null;
         }
 
+        // --- 7) プリフィル URL の構築（URL の entry と UID が両方揃ったときのみ）---
+        const prefill =
+          uid && entryKey
+            ? `${baseForm}?usp=pp_url&${entryKey}=${encodeURIComponent(uid)}`
+            : baseForm;
 
-        // ★ デバッグ：最終遷移URLを出力
-        console.log("[OPEN] redirect to:", dest);
+        // --- 8) 通知（ON かつ UID あり のときのみ）---
+        if (!sentRef.current && Number(link.notify) === 1 && uid) {
+          sentRef.current = true;
+          const payload = {
+            userId: uid,
+            type: "card" as const,
+            formUrl: prefill,
+            title: link.title || "Googleフォーム",
+            desc:
+              link.desc ||
+              "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
+            bgcolor: link.bgcolor,
+            lid,
+          };
+          await sendNotifyCard(payload);
+        }
 
-        // 7) 遷移（★ここで終了。↓の“重複ブロック”は削除）
-        sessionStorage.setItem(FORM_REDIRECTED_KEY, "1");
-        location.replace(dest.startsWith("http") ? dest : `${base}${dest}`);
-
+        // --- 9) 遷移 ---
+        // （prefill に UID が入っていなければ、そのまま base に飛ぶ）
+        setTimeout(() => location.replace(prefill), 120);
       } catch (e: any) {
         console.error("[open] error:", e);
         setErr(e?.message || String(e));
@@ -247,16 +130,12 @@ export default function OpenFormClient() {
     })();
   }, []);
 
-  /* ---- LINEで開く（モバイル外部ブラウザ） ---- */
+  // “LINEで開く”保険（URL の liff をそのまま使う）
   const openInLine = () => {
-    const qs = location.search || "";
-    const fromQuery = new URLSearchParams(qs).get("liff") || new URLSearchParams(qs).get("liffId");
-    const id = fromQuery || liffIdForButton;
-    if (!id) {
-      alert("LIFF ID が特定できません（URLかリンク設定をご確認ください）");
-      return;
-    }
-    const universal = `https://liff.line.me/${encodeURIComponent(id)}${qs}`;
+    const sp = new URLSearchParams(location.search);
+    const liffId = (sp.get("liff") || sp.get("liffId") || "").trim();
+    if (!liffId) return alert("LIFF ID 不明です");
+    const universal = `https://liff.line.me/${encodeURIComponent(liffId)}${location.search || ""}`;
     if ((window as any).liff?.openWindow) {
       (window as any).liff.openWindow({ url: universal, external: false });
     } else {
@@ -264,23 +143,20 @@ export default function OpenFormClient() {
     }
   };
 
-  if (typeof window !== "undefined" && sessionStorage.getItem(FORM_REDIRECTED_KEY) === "1") {
-    return <div />;
-  }
-
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
       {showOpenInLine ? (
         <div className="text-center space-y-3">
           <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
-          <p className="text-xs text-gray-500">自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。</p>
-          <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">LINEで開く</button>
+          <p className="text-xs text-gray-500">LINEアプリで開くとユーザー情報を自動反映できます。</p>
+          <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
+            LINEで開く
+          </button>
         </div>
       ) : err ? (
         <div className="text-center max-w-md">
           <div className="text-red-600 mb-2">エラーが発生しました</div>
           <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
-          <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
         </div>
       ) : (
         <div className="text-center">
