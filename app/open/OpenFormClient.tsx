@@ -4,182 +4,191 @@ import { useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
-/**
- * クエリで渡せるパラメータ例
- *   lid=xxxxx                 // /api/links/[lid] のキー（必須）
- *   liff=2008...-abc          // LIFF ID（任意、指定があればそれを最優先）
- *   entry=123456 or entry.123456 // UIDを入れるフォームのentryキー（任意。links側のentryが優先）
- *   nameEntry=654321          // displayNameを入れるentryキー
- *   iconEntry=777777          // pictureUrlを入れるentryキー（URL文字列として保存される）
- */
+const ONCE_KEY = "redirectedToLiff";
+
+function isMobileLike() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  // iOS/Android/一部のモバイル UA を判定
+  return /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua);
+}
+
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
+  const [pcOnlyNotice, setPcOnlyNotice] = useState(false); // ★ 追加：PC 向け案内
   const sentRef = useRef(false);
+  const [liffIdForButton, setLiffIdForButton] = useState<string | null>(null);
 
-  // --- 通知送信（fetch 本線 / Beacon フォールバック）---
-  async function sendNotifyCard(payload: any) {
-    try {
-      let ok = false;
-      try {
-        const r = await fetch("/api/line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-          credentials: "include",
-        });
-        ok = r.ok;
-        if (!r.ok) {
-          const text = await r.text().catch(() => "");
-          console.warn("[notify] fetch failed:", r.status, text);
-        }
-      } catch (e) {
-        console.warn("[notify] fetch threw:", e);
-      }
-      if (!ok && "sendBeacon" in navigator) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        ok = navigator.sendBeacon("/api/line", blob);
-      }
-      // 送信完了を待つため少しだけ待機
-      await new Promise((r) => setTimeout(r, ok ? 300 : 800));
-    } catch (e) {
-      console.warn("[notify] failed:", e);
-    }
-  }
+  // async function sendNotifyCard(payload: any) {
+  //   try {
+  //     let beaconed = false;
+  //     if ("sendBeacon" in navigator) {
+  //       const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  //       beaconed = navigator.sendBeacon("/api/line", blob);
+  //     }
+  //     if (!beaconed) {
+  //       await fetch("/api/line", {
+  //         method: "POST",
+  //         headers: { "Content-Type": "application/json" },
+  //         body: JSON.stringify(payload),
+  //         keepalive: true,
+  //         credentials: "include",
+  //       });
+  //     }
+  //     await new Promise((r) => setTimeout(r, 600));
+  //   } catch (e) {
+  //     console.warn("[notify] failed:", e);
+  //   }
+  // }
 
   useEffect(() => {
     (async () => {
       try {
         const qs = new URLSearchParams(location.search);
-
-        // --- 0) lid は必須 ---
-        const lid = (qs.get("lid") || "").trim();
+        const lid = qs.get("lid");
         if (!lid) throw new Error("NO_LID_IN_URL");
 
-        // --- 1) リンク情報を取得 ---
-        const linkResp = await fetch(`/api/links/${encodeURIComponent(lid)}${location.search ? `?${location.search}` : ""}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+        // 1) /api/links
+        const linkResp = await fetch(`/api/links/${lid}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
-        const formUrlFromLink: string = link.formUrl; // すでに viewform に正規化済み
-        const entryFromLink: string | undefined = link.entry || undefined;
-        const notifyFlag: number = Number(link.notify) || 0;
-
-        // --- 2) 使用する LIFF ID（URL > links > env の優先順）---
-        const liffIdFromQuery = (qs.get("liff") || qs.get("liffId") || "").trim();
-        const liffToUse: string =
-          liffIdFromQuery ||
-          (typeof link.liffId === "string" ? link.liffId : "") ||
-          (process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID || "");
+        // 2) LIFF ID
+        const liffIdFromQuery = qs.get("liff") || qs.get("liffId") || undefined;
+        const liffToUse = (liffIdFromQuery || link.liffId || process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID) as string | undefined;
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
 
-        // --- 3) LIFF 初期化 ---
+        setLiffIdForButton(liffToUse);
+
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        // --- 4) LINEアプリ内 or 外部ブラウザ を判定 ---
-        const inClient =
-          typeof (window as any).liff?.isInClient === "function"
-            ? (window as any).liff.isInClient()
-            : (liffManager as any).isInClient?.() ?? false;
+        // 3) in-client 判定
+        const inClient = typeof (window as any).liff?.isInClient === "function"
+          ? (window as any).liff.isInClient()
+          : (liffManager as any).isInClient?.() ?? false;
 
-        // 外部ブラウザなら「LINEで開く」導線を出す
-        if (!inClient) setShowOpenInLine(true);
+        // 3.5) in-client でない場合の分岐を端末別に変更
+        if (!inClient) {
+          const mobile = isMobileLike();
+          const already = sessionStorage.getItem(ONCE_KEY) === "1";
 
-        // --- 5) ログイン状態を確保（外部ブラウザなど）---
-        // すでにログイン済みか判定し、未ログインなら SSO で silent login を試す
-        const isLoggedIn = !!(window as any).liff?.isLoggedIn?.();
-        if (!isLoggedIn) {
-          await (window as any).liff.login({ redirectUri: location.href, prompt: "none" });
-          return; // ここでリダイレクト→復帰後に続行
+          if (mobile) {
+            // ★ スマホ：従来どおりユニバーサルリンクへ一度だけ自動遷移
+            if (!already) {
+              sessionStorage.setItem(ONCE_KEY, "1");
+              const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+              location.replace(universal);
+              return;
+            } else {
+              // ループ防止後は「LINEで開く」ボタンを出す（従来の保険）
+              setShowOpenInLine(true);
+              return;
+            }
+          } else {
+            // // ★ PC：遷移しない。案内のみ表示
+            setPcOnlyNotice(true);
+            // setErr(null); // エラー枠は出さない
+            // return;
+            const already = sessionStorage.getItem(ONCE_KEY) === "1";
+            if (!already) {
+              sessionStorage.setItem(ONCE_KEY, "1");
+              // いまのクエリをそのまま引き継ぐ
+              const universal = `https://liff.line.me/${encodeURIComponent(liffToUse)}${location.search || ""}`;
+              location.replace(universal);
+              return;
+            } else {
+              // それでも in-client にならない＝LINE外で開いている可能性 → ボタン表示
+              setShowOpenInLine(true);
+              return;
+            }
+          }
         }
 
-        // --- 6) プロフィール＆IDトークン 取得 ---
-        //   getProfile(): { userId, displayName, pictureUrl, ... }
-        //   getDecodedIDToken(): { sub(=userId), name, picture, ... } ※openidスコープが必要
-        let profile: any = null;
-        try {
-          profile = await liffManager.getProfile();
-        } catch {
-          profile = null;
+        // in-client で再入場できたのでフラグをクリア
+        sessionStorage.removeItem(ONCE_KEY);
+
+        // 4) プロフィール取得（in-clientなのでログイン画面は出ない）
+        const profile = await liffManager.getProfile();
+        if (!profile?.userId) throw new Error("NO_LIFF_PROFILE");
+
+        await fetch("/api/line-users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            lineUserId: profile.userId,
+            displayName: profile.displayName,
+            pictureUrl: profile.pictureUrl ?? null,
+          }),
+        });
+
+        // 5) GoogleフォームURL & entry
+        const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
+        const entryFromUrl = qs.get("entry");
+        let userEntry: string | null = null;
+        if (entryFromUrl) {
+          userEntry = entryFromUrl.startsWith("entry.") ? entryFromUrl : `entry.${entryFromUrl}`;
+        } else if (link.entry) {
+          userEntry = link.entry.startsWith("entry.") ? link.entry : `entry.${link.entry}`;
+        } else {
+          const det = await GoogleFormsManager.detectEntryIds(viewUrl).catch(() => null);
+          if (det?.success && det.userId) userEntry = det.userId.startsWith("entry.") ? det.userId : `entry.${det.userId}`;
+          if (!userEntry) throw new Error("Entry ID が見つかりません。&entry= を付けてください。");
         }
-        const idt: any = (window as any).liff?.getDecodedIDToken?.() || null;
 
-        const uid = (profile?.userId || idt?.sub || "") as string;
-        const displayName = (profile?.displayName || idt?.name || "") as string;
-        const pictureUrl = (profile?.pictureUrl || idt?.picture || "") as string;
+        // 6) prefill
+        const prefill = `${viewUrl.split("?")[0]}?usp=pp_url&${userEntry}=${encodeURIComponent(profile.userId)}`;
 
-        // --- 7) Google フォームURL をベースにする ---
-        const baseForm = GoogleFormsManager.toViewUrl(formUrlFromLink).split("?")[0];
-
-        // --- 8) entry キーの決定（URL の entry は “常に許可” するが、linksの定義があればそれを優先）
-        //     例: ?entry=entry.1587760013 または ?entry=1587760013 どちらも許可
-        function normalizeEntryKey(v: string | null | undefined) {
-          if (!v) return null;
-          const t = v.trim();
-          const k = t.startsWith("entry.") ? t : `entry.${t}`;
-          return /^entry\.\d{5,}$/.test(k) ? k : null; // 数字5桁以上のみ許可
-        }
-        const entryFromQuery = normalizeEntryKey(qs.get("entry"));
-        const uidEntryKey = normalizeEntryKey(entryFromLink || entryFromQuery);
-
-        // --- 9) displayName / pictureUrl の entry キー（任意）
-        const nameEntryKey = normalizeEntryKey(qs.get("nameEntry"));
-        const iconEntryKey = normalizeEntryKey(qs.get("iconEntry"));
-
-        // --- 10) プリフィルURLの作成 ---
-        const prefillParams = new URLSearchParams();
-        // UID
-        if (uid && uidEntryKey) prefillParams.set(uidEntryKey, uid);
-        // displayName
-        if (displayName && nameEntryKey) prefillParams.set(nameEntryKey, displayName);
-        // pictureUrl（URL文字列として保存される。フォーム上で画像表示はされない）
-        if (pictureUrl && iconEntryKey) prefillParams.set(iconEntryKey, pictureUrl);
-
-        const prefill = prefillParams.toString()
-          ? `${baseForm}?usp=pp_url&${prefillParams.toString()}`
-          : baseForm;
-
-        // --- 11) 通知（ON かつ UIDあり のとき）---
-        if (!sentRef.current && notifyFlag === 1 && uid) {
+        // 7) 通知（任意）
+        if (!sentRef.current && link.notify === 1) {
           sentRef.current = true;
           const payload = {
-            userId: uid,
-            displayName,
-            pictureUrl,
+            userId: profile.userId,
             type: "card" as const,
             formUrl: prefill,
-            title: (link.title as string) || "Googleフォーム",
-            desc:
-              (link.desc as string) ||
-              "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
+            title: link.title || "Googleフォーム",
+            desc: link.desc || "※こちらご対応頂くことで弊社からご連絡することが可能になります。必ずご回答ください。",
             bgcolor: link.bgcolor,
             lid,
           };
-          await sendNotifyCard(payload);
+          try {
+            let sent = false;
+            if ("sendBeacon" in navigator) {
+              const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+              sent = navigator.sendBeacon("/api/line", blob);
+            }
+            if (!sent) {
+              await fetch("/api/line", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                keepalive: true,
+              });
+            }
+          } catch { /* ignore */ }
         }
-
-        // --- 12) 遷移（prefillに何も入らない場合は素のviewへ）---
-        setTimeout(() => {
-          location.replace(prefill);
-        }, 120);
+        // 8) 遷移
+        setTimeout(() => location.replace(prefill), 150);
       } catch (e: any) {
         console.error("[open] error:", e);
-        setErr(e?.message || String(e));
+        // PC 専用案内を優先している場合は err を出さない
+        if (!pcOnlyNotice) setErr(e?.message || String(e));
       }
     })();
-  }, []);
+  }, [pcOnlyNotice]);
 
-  // “LINEで開く”保険（URL の liff をそのまま使う）
+  // 保険：手動で「LINEで開く」
   const openInLine = () => {
-    const sp = new URLSearchParams(location.search);
-    const liffId = (sp.get("liff") || sp.get("liffId") || "").trim();
-    if (!liffId) return alert("LIFF ID 不明です");
-    const universal = `https://liff.line.me/${encodeURIComponent(liffId)}${location.search || ""}`;
+    const qs = location.search || "";
+    const fromQuery = new URLSearchParams(qs).get("liff") || new URLSearchParams(qs).get("liffId");
+    const id = fromQuery || liffIdForButton;
+    if (!id) {
+      alert("LIFF ID が特定できません（URLかリンク設定をご確認ください）");
+      return;
+    }
+    const universal = `https://liff.line.me/${encodeURIComponent(id)}${qs}`;
     if ((window as any).liff?.openWindow) {
       (window as any).liff.openWindow({ url: universal, external: false });
     } else {
@@ -189,25 +198,40 @@ export default function OpenFormClient() {
 
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
-      {showOpenInLine ? (
-        <div className="text-center space-y-3">
-          <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
-          <p className="text-xs text-gray-500">LINEアプリで開くとユーザー情報（UID/名前/アイコン）を自動反映できます。</p>
-          <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
-            LINEで開く
-          </button>
-        </div>
-      ) : err ? (
-        <div className="text-center max-w-md">
-          <div className="text-red-600 mb-2">エラーが発生しました</div>
-          <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
-        </div>
-      ) : (
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
-          <div>フォームへ遷移中…</div>
-        </div>
-      )}
+      {
+        // pcOnlyNotice ? (
+        // <div className="text-center space-y-3">
+        //   <div className="text-gray-800 font-semibold">このページはパソコンでは実行できません</div>
+        //   <p className="text-xs text-gray-500">
+        //     お手数ですが、<span className="font-medium">スマホの LINE から本リンクを開いて</span>実行してください。
+        //   </p>
+        //   <div className="text-[11px] text-gray-400">
+        //     （スマホで開くと自動でフォームに遷移します）
+        //   </div>
+        // </div>
+        // ) :
+        showOpenInLine ? (
+          <div className="text-center space-y-3">
+            <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
+            <p className="text-xs text-gray-500">
+              自動でLINEに切り替えられない環境です。「LINEで開く」を押してください。
+            </p>
+            <button onClick={openInLine} className="px-4 py-2 rounded bg-black text-white">
+              LINEで開く
+            </button>
+          </div>
+        ) : err ? (
+          <div className="text-center max-w-md">
+            <div className="text-red-600 mb-2">エラーが発生しました</div>
+            <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded break-words">{err}</div>
+            <div className="mt-4 text-xs text-gray-400">ページを再読み込みするか、管理者にお問い合わせください。</div>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
+            <div>フォームへ遷移中…</div>
+          </div>
+        )}
     </div>
   );
-}
+} 
