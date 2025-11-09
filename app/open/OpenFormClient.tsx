@@ -42,10 +42,33 @@ export default function OpenFormClient() {
   useEffect(() => {
     (async () => {
       try {
-        const qs = new URLSearchParams(location.search);
+        console.log("[OPEN] Full URL:", location.href);
+        console.log("[OPEN] Search params:", location.search);
+
+        // LIFFログイン後、liff.stateから元のパラメータを復元
+        let searchParams = location.search;
+        const currentQs = new URLSearchParams(searchParams);
+        const liffState = currentQs.get("liff.state");
+
+        if (liffState) {
+          // liff.stateがある場合、それをデコードして元のURLを復元
+          try {
+            const decodedState = decodeURIComponent(liffState);
+            console.log("[OPEN] Decoded liff.state:", decodedState);
+            // liff.stateは元のURLパス+クエリ形式（例: /open?lid=xxx&entry=123）
+            const stateUrl = new URL(decodedState, location.origin);
+            searchParams = stateUrl.search;
+            console.log("[OPEN] Restored params from liff.state:", searchParams);
+          } catch (e) {
+            console.warn("[OPEN] Failed to decode liff.state:", e);
+          }
+        }
+
+        const qs = new URLSearchParams(searchParams);
 
         // --- 必須: lid ---
         const lid = (qs.get("lid") || "").trim();
+        console.log("[OPEN] lid parameter:", lid);
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         // --- 1) リンク情報 ---
@@ -66,6 +89,7 @@ export default function OpenFormClient() {
 
         // --- 3) ログイン確認 & 実行 ---
         const isLoggedIn = (window as any).liff?.isLoggedIn?.() ?? false;
+        console.log("[OPEN] isLoggedIn:", isLoggedIn);
         if (!isLoggedIn) {
           // 未ログインならログイン実行（LINEアプリ内外問わず）
           await (window as any).liff.login({ redirectUri: location.href });
