@@ -64,16 +64,12 @@ export default function OpenFormClient() {
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
 
-        // --- 3) LINE アプリ内か？ ---
-        const inClient =
-          typeof (window as any).liff?.isInClient === "function"
-            ? (window as any).liff.isInClient()
-            : (liffManager as any).isInClient?.() ?? false;
-
-        // in-client かつ未ログインならサイレント SSO（prompt:none）
-        if (inClient && !(window as any).liff?.isLoggedIn?.()) {
-          await (window as any).liff.login({ redirectUri: location.href, prompt: "none" });
-          return; // ここでリダイレクト→復帰後に以下が続行
+        // --- 3) ログイン確認 & 実行 ---
+        const isLoggedIn = (window as any).liff?.isLoggedIn?.() ?? false;
+        if (!isLoggedIn) {
+          // 未ログインならログイン実行（LINEアプリ内外問わず）
+          await (window as any).liff.login({ redirectUri: location.href });
+          return; // リダイレクト→復帰後に以下が続行
         }
 
         // --- 4) プロフィール（in-client ならUIDが取れる）---
