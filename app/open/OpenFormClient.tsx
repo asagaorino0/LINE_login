@@ -79,6 +79,8 @@ export default function OpenFormClient() {
         // --- 4) プロフィール（in-client ならUIDが取れる）---
         const profile = await liffManager.getProfile().catch(() => null);
         const uid = profile?.userId || "";
+        console.log("[OPEN] LIFF Profile:", profile);
+        console.log("[OPEN] LINE UID:", uid);
 
         // --- 5) Google フォーム URL（view に正規化）---
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
@@ -86,12 +88,13 @@ export default function OpenFormClient() {
 
         // --- 6) entry は “必ず URL からのみ取得” ---
         // 例: ?entry=entry.1587760013 または ?entry=1587760013 どちらも許可
-        const entryRaw = (qs.get("entry") || "").trim();
+        const entryRaw = String(qs.get("entry") || link.entry || "").trim();
         let entryKey: string | null = null;
         if (entryRaw) {
           entryKey = entryRaw.startsWith("entry.") ? entryRaw : `entry.${entryRaw}`;
           // 明らかに不正な値は破棄
           if (!/^entry\.\d{5,}$/.test(entryKey)) entryKey = null;
+          console.log("[OPEN] Entry Key:", entryKey);
         }
 
         // --- 7) プリフィル URL の構築（URL の entry と UID が両方揃ったときのみ）---
@@ -99,6 +102,7 @@ export default function OpenFormClient() {
           uid && entryKey
             ? `${baseForm}?usp=pp_url&${entryKey}=${encodeURIComponent(uid)}`
             : baseForm;
+        console.log("[OPEN] Prefill URL:", prefill);
 
         // --- 8) 通知（ON かつ UID あり のときのみ）---
         if (!sentRef.current && Number(link.notify) === 1 && uid) {
