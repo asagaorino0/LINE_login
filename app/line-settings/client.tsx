@@ -20,27 +20,16 @@ type GasLinkKind = "form" | "sheet";
 function buildGasCode(params: { titles: string[]; linkKind: GasLinkKind; formTitle?: string }) {
   const { titles, linkKind } = params;
 
-  // フォールバック & エスケープ
-  const formTitleSafe = (params.formTitle?.trim() || "Googleフォーム")
-    .replace(/\\/g, "\\\\")   // バックスラッシュ
-    .replace(/`/g, "\\`")     // バッククォート
-    .replace(/\$/g, "\\$");   // ${...} 崩れ対策
+  // フォーム名（未指定なら「新しいフォーム回答」）を GAS の文字列に安全に埋め込む
+  const formTitleSafe = (params.formTitle?.trim() || "新しいフォーム回答")
+    .replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
 
-  // 空・重複・前後空白を整理
-  const cleaned = Array.from(
-    new Set(
-      titles
-        .map((t) => (t || "").trim())
-        .filter((t) => t.length > 0)
-    )
-  );
+  // 通知に並べたい設問タイトル
+  const cleaned = Array.from(new Set((titles || []).map(t => (t || "").trim()).filter(t => t.length > 0)));
   const fallbackTitles = cleaned.length > 0 ? cleaned : ["お名前"];
+  const TITLES_ARRAY_LITERAL = `[${fallbackTitles.map(t => JSON.stringify(t)).join(", ")}]`;
 
-  // GAS に埋め込むタイトル配列リテラル
-  const TITLES_ARRAY_LITERAL = `[${fallbackTitles
-    .map((t) => JSON.stringify(t))
-    .join(", ")}]`;
-
+  // シートURLを通知リンクに使うオプション
   const SHEET_FIELD_BLOCK =
     linkKind === "sheet"
       ? `
@@ -60,151 +49,217 @@ function buildGasCode(params: { titles: string[]; linkKind: GasLinkKind; formTit
 
   const JUMP_LINK_EXPR = linkKind === "sheet" ? `(SHEET_URL || FORM_URL)` : `FORM_URL`;
 
-  // ここで返すのは“GASに貼る文字列”
-  return `// === 設定を保存するためのスクリプトプロパティ ===
+  // === GAS へ貼り付ける 1 本のコード文字列 ===
+  return `// === 設定（スクリプトプロパティ） ===
 const props = PropertiesService.getScriptProperties();
 
 // === 設定画面（任意） ===
-// ※ 画面で設定を保存したい場合だけ使います。使わない場合は無視してOK。
 function doGet() {
   const html = \`
-  <html>
-    <body style="font-family:sans-serif;padding:20px;line-height:1.6;">
-      <h2 style="margin:0 0 8px;">Googleフォーム通知設定</h2>
-      <p style="margin:0 0 16px;">
-        <a href="https://developers.line.biz/console/" target="_blank" style="color:#2563eb;text-decoration:underline;">
-          LINE Developers Console
-        </a>
-        で取得した値を入力してください。
-      </p>
-
-      <form id="configForm">
-        <!-- あなたのユーザーID -->
-        <label><strong>あなたのユーザーID *</strong></label><br>
-        <input
-          type="text"
-          id="user"
-          placeholder="例: Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;"
-          value="${'${'}props.getProperty('LINE_USER_ID') || ''${'}'}"
-        ><br><br>
-        <!-- チャンネルアクセストークン（長期） -->
-        <label><strong>チャンネルアクセストークン（長期） *</strong></label><br>
-        <input
-          type="text"
-          id="token"
-          placeholder="例: xxxxxxxx..."
-          style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;"
-          value="${'${'}props.getProperty('LINE_TOKEN') || ''${'}'}"
-        ><br>
-        <div style="font-size:12px;color:#6b7280;margin:6px 0 14px;">
-          Messaging API 設定から発行／再発行できます。
-        </div>
-
-        <!-- 通知で開くURL（フォーム/回答シートなど） -->
-        <label>通知で開くURL（フォーム/回答シートなど）</label><br>
-        <input
-          type="text"
-          id="formurl"
-          placeholder="例: フォームのURL または 回答スプレッドシートのURL"
-          style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;"
-          value="${'${'}props.getProperty('FORM_URL') || ''${'}'}"
-        ><br><br>
-        ${SHEET_FIELD_BLOCK}
-
-        <button
-          type="button"
-          onclick="saveConfig()"
-          style="padding:10px 16px;background:#16a34a;color:#fff;border:none;border-radius:6px;cursor:pointer;"
-        >
-          保存
-        </button>
-      </form>
-      <script>
-        function saveConfig() {
-          const data = {
-            user: document.getElementById('user').value,
-            token: document.getElementById('token').value,
-            formurl: document.getElementById('formurl').value,${linkKind === "sheet" ? `
-            sheeturl: document.getElementById('sheeturl').value,` : ""}
-          };
-          google.script.run.withSuccessHandler(() => alert('保存しました')).saveSettings(data);
-        }
-      </script>
-    </body>
-  </html>\`;
+  <html><body style="font-family:sans-serif;padding:20px;line-height:1.6;">
+    <h2 style="margin:0 0 8px;">Googleフォーム通知設定</h2>
+    <form id="configForm">
+      <label><strong>あなたのユーザーID *</strong></label><br>
+      <input id="user" style="width:100%" value="\${props.getProperty('LINE_USER_ID') || ''}"><br><br>
+      <label><strong>チャンネルアクセストークン（長期） *</strong></label><br>
+      <input id="token" style="width:100%" value="\${props.getProperty('LINE_TOKEN') || ''}"><br><br>
+      <label>通知で開くURL（フォーム/回答シートなど）</label><br>
+      <input id="formurl" style="width:100%" value="\${props.getProperty('FORM_URL') || ''}"><br><br>
+      ${SHEET_FIELD_BLOCK}
+      <button type="button" onclick="saveConfig()">保存</button>
+    </form>
+    <script>
+      function saveConfig(){
+        const data = {
+          user: document.getElementById('user').value,
+          token: document.getElementById('token').value,
+          formurl: document.getElementById('formurl').value,${linkKind === "sheet" ? `
+          sheeturl: document.getElementById('sheeturl').value,` : ""}
+        };
+        google.script.run.withSuccessHandler(() => alert('保存しました')).saveSettings(data);
+      }
+    </script>
+  </body></html>\`;
   return HtmlService.createHtmlOutput(html);
 }
 
-// === 設定を保存 ===
-function saveSettings(data) {
+function saveSettings(data){
   props.setProperty('LINE_TOKEN', data.token || '');
   props.setProperty('LINE_USER_ID', data.user || '');
   props.setProperty('FORM_URL', data.formurl || '');
   ${SHEET_SAVE_LINE}
 }
 
-// === フォーム送信時の通知 ===
+/** ================= プロフィール取得（UID→displayName/pictureUrl） ================= */
+function getLineProfile(lineToken, userId){
+  if (!lineToken || !userId) return null;
+  try {
+    const url = 'https://api.line.me/v2/bot/profile/' + encodeURIComponent(userId);
+    const res = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Authorization: 'Bearer ' + lineToken },
+      muteHttpExceptions: true,
+    });
+    if (res.getResponseCode() !== 200) {
+      Logger.log('profile fetch NG: %s %s', res.getResponseCode(), res.getContentText());
+      return null;
+    }
+    return JSON.parse(res.getContentText()); // {userId, displayName, pictureUrl, statusMessage}
+  } catch (e) {
+    Logger.log('profile fetch error: %s', e);
+    return null;
+  }
+}
+
+/** 回答から UID を推定（タイトル一致 or 値から正規表現） */
+function extractUidFromResponses(items){
+  const UID_TITLE_HINTS = ['LINE User ID','LINEユーザーID','LINE UID','ユーザーID','uid'];
+  var uid = '';
+  for (var i=0;i<items.length;i++){
+    var it = items[i];
+    var title = it.getItem().getTitle();
+    var resp = String(it.getResponse() || '').trim();
+    if (!uid && UID_TITLE_HINTS.indexOf(title) >= 0) uid = resp;
+    if (!uid) {
+      var m = resp.match(/^U[0-9a-f]{32}$/i);
+      if (m) uid = m[0];
+    }
+    if (uid) break;
+  }
+  return uid;
+}
+
+/** ========== フォーム名のヘルパー（指定が無ければ「新しいフォーム回答」） ========== */
+const FORM_TITLE = '${formTitleSafe}';
+function formName(){ return (FORM_TITLE && FORM_TITLE.trim()) ? FORM_TITLE.trim() : '新しいフォーム回答'; }
+
+/** ================= Flexメッセージ（四角いアイコン＋ヘッダ：回答：<フォーム名>（<LINE名>）） ================= */
+function buildFlexMessage(formTitleText, displayName, pictureUrl, textLines, jumpLink) {
+  // ヘッダは「回答：<フォーム名>（<LINE名>）」
+  var headerText = '回答：' + (formTitleText || '新しいフォーム回答') + (displayName ? '（' + displayName + '）' : '');
+
+  var bodyTexts = textLines.map(function (t) {
+    return { type: 'text', text: String(t), wrap: true, size: 'sm', color: '#333333' };
+  });
+
+  // 四角いアイコン（そのまま）
+  var leftImage = (pictureUrl && /^https?:\\/\\//i.test(pictureUrl))
+    ? { type: 'image', url: pictureUrl, size: 'xxs', aspectMode: 'cover', aspectRatio: '1:1', flex: 0 }
+    : { type: 'filler', flex: 0 };
+
+  var headerRow = {
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'md',
+    alignItems: 'center',
+    contents: [
+      leftImage,
+      { type: 'box', layout: 'vertical', contents: [
+        { type: 'text', text: headerText, weight: 'bold', wrap: true }
+      ]}
+    ]
+  };
+
+  var contents = [
+    headerRow,
+    { type: 'separator', margin: 'md' },
+    { type: 'box', layout: 'vertical', spacing: 'sm', contents: bodyTexts }
+  ];
+
+  if (jumpLink) {
+    contents.push({ type: 'separator', margin: 'md' });
+    contents.push({ type: 'button', style: 'link', action: { type: 'uri', label: '回答を見る', uri: jumpLink } });
+  }
+
+  return {
+    type: 'flex',
+    altText: headerText,
+    contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', spacing: 'md', contents: contents } }
+  };
+}
+
+/** ================= 送信エントリーポイント ================= */
 function onFormSubmit(e) {
   const LINE_TOKEN = props.getProperty('LINE_TOKEN') || '';
   const LINE_USER_ID = props.getProperty('LINE_USER_ID') || '';
   const FORM_URL = props.getProperty('FORM_URL') || '';
   ${SHEET_PROP_LINE}
 
-  // 抽出する設問タイトル（複数）
+  // 通知に含める設問
   const TARGET_TITLES = ${TITLES_ARRAY_LITERAL};
 
+  // 回答を読む
   const items = e.response.getItemResponses();
-
-  // タイトル -> 回答 のマップを作る
-  const answers = {};
-  TARGET_TITLES.forEach(t => answers[t] = ''); // 初期化
-
-  items.forEach(item => {
-    const title = item.getItem().getTitle();
+  var answers = {};
+  TARGET_TITLES.forEach(function(t){ answers[t] = ''; });
+  items.forEach(function(item){
+    var title = item.getItem().getTitle();
     if (TARGET_TITLES.indexOf(title) >= 0) {
       answers[title] = item.getResponse();
     }
   });
 
-  // 通知本文を構築
-  let lines = ['📩 回答：${formTitleSafe}'];
-  TARGET_TITLES.forEach(t => {
-    const v = answers[t] || '（未入力）';
-    lines.push('📝 ' + t + '：' + v);
+  // 本文行：「<フォーム名>\\n\\n<設問：回答>」の形式（あなたの指定どおり）
+  var lines = [];
+  TARGET_TITLES.forEach(function(t){
+    var v = answers[t] || '（未入力）';
+    // lines.push(formName() + '\\n\\n' + t + '：' + v);
+    lines.push( t + '：' + v);
   });
 
-  const jumpLink = ${JUMP_LINK_EXPR};
-  lines.push('');
-  lines.push('📄 回答を見る：' + (jumpLink || '(未設定)'));
-  const msg = lines.join('\\n');
+  // UID→プロフィール取得（displayName / pictureUrl）
+  var uid = extractUidFromResponses(items);
+  var prof = uid ? getLineProfile(LINE_TOKEN, uid) : null;
+  var displayName = prof && prof.displayName ? String(prof.displayName) : '';
+  var pictureUrl  = prof && prof.pictureUrl  ? String(prof.pictureUrl)  : '';
 
-  sendLineMessage(LINE_TOKEN, LINE_USER_ID, msg);
+  // Flex生成：ヘッダは「回答：<フォーム名>（<LINE名>）」
+  var jumpLink = ${JUMP_LINK_EXPR};
+  var flex = buildFlexMessage(formName(), displayName, pictureUrl, lines, jumpLink);
+
+  // 送信（Flex 1通／失敗時はテキスト）
+  try {
+    sendLinePush(LINE_TOKEN, LINE_USER_ID, [flex]);
+  } catch (err) {
+    var headerText = '回答：' + formName() + (displayName ? '（' + displayName + '）' : '');
+    var textMsg = headerText + '\\n' + lines.join('\\n') + (jumpLink ? ('\\n\\n📄 回答を見る：' + jumpLink) : '');
+    sendLinePush(LINE_TOKEN, LINE_USER_ID, [{ type: 'text', text: textMsg }]);
+  }
 }
 
-// === LINE通知送信 ===
-function sendLineMessage(token, user, message) {
-  if (!token || !user) {
-    Logger.log('token/user が未設定のため送信しません');
+/** 複数メッセージ送信 */
+function sendLinePush(token, toUser, messages){
+  if (!token || !toUser) {
+    Logger.log('token/user 未設定のため送信せず');
     return;
   }
   const url = 'https://api.line.me/v2/bot/message/push';
-  const payload = { to: user, messages: [{ type: 'text', text: message }] };
+  const payload = { to: toUser, messages: messages };
   const options = {
     method: 'post',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
     payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
+    muteHttpExceptions: true
   };
   const res = UrlFetchApp.fetch(url, options);
-  Logger.log('LINE push status: %s, body: %s', res.getResponseCode(), res.getContentText());
+  Logger.log('push status: %s body: %s', res.getResponseCode(), res.getContentText());
+}
+
+// 動作確認
+function testPush(){
+  const LINE_TOKEN = props.getProperty('LINE_TOKEN') || '';
+  const LINE_USER_ID = props.getProperty('LINE_USER_ID') || '';
+  const demo = buildFlexMessage(formName(), '山田太郎', 'https://dummyimage.com/240x240', [formName() + '\\n\\n📝 サンプル：はい'], props.getProperty('FORM_URL') || '');
+  sendLinePush(LINE_TOKEN, LINE_USER_ID, [demo]);
 }
 `;
 }
 
+
+
 /* ------------------------------ Component ------------------------------ */
 
-export default function LineSettingsClient({ formTitle = "Googleフォーム" }: { formTitle?: string }) {
+export default function LineSettingsClient({ formTitle }: { formTitle?: string }) {
   // 複数タイトルを管理
   const [titles, setTitles] = useState<string[]>(["お名前"]);
   const [linkKind, setLinkKind] = useState<GasLinkKind>("form");

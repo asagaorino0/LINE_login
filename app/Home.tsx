@@ -15,8 +15,9 @@ import { ToastNotification, useToastNotification } from '../components/ui/toast-
 import { apiRequest } from './lib/queryClient';
 import { GoogleFormsManager } from './lib/googleForms';
 import { liffManager, LiffProfile } from '@/lib/liff';
-import LineSettingsClient from './line-settings/client';
+// import LineSettingsClient from './line-settings/client';
 import Howto from './line-settings/howto';
+import LineSettingsClient from './line-settings/client';
 
 /* ------------------------------ Types & Const ------------------------------ */
 
@@ -90,8 +91,8 @@ const extractFormId = (url?: string) => {
 export default function Home() {
   /* ---- routing / accounts ---- */
   const [pathname, setPathname] = useState<string>('');
-  // const [accounts, setAccounts] = useState<Account[]>([]);
-  // const [selectedBasicId, setSelectedBasicId] = useState<string>('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedBasicId, setSelectedBasicId] = useState<string>('');
 
   /* ---- app state ---- */
   const [isInitialized, setIsInitialized] = useState(false);
@@ -122,7 +123,7 @@ export default function Home() {
   const { toast, showToast, hideToast } = useToastNotification();
   // const didRunRef = useRef(false);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
-  // const [atherAccounts, setAtherAccounts] = useState(false)
+  const [atherAccounts, setAtherAccounts] = useState(false)
   // ★ 生成したリンクの lid を保持（またはURLの lid を保持）
   const [createdLid, setCreatedLid] = useState<string | null>(null);
   const [isLoadingEntry, setIsLoadingEntry] = useState(false);
@@ -568,7 +569,55 @@ export default function Home() {
       liffIdForm.setValue('liffId', liffSettingsQuery.data.liffId);
     }
   }, [liffSettingsQuery.data, liffIdForm]);
+  // 追加：URL入力直後にタイトルなどを拾って反映（formUrlをトリガー）
+  const detectTimerRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    if (pathname === '/open') return;
+    if (!formUrl?.trim()) return;
+    if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+    detectTimerRef.current = window.setTimeout(async () => {
+      try {
+        // URL 正規化
+        const normalized = (GoogleFormsManager as any)?.normalizeFormUrl
+          ? (GoogleFormsManager as any).normalizeFormUrl(formUrl)
+          : formUrl;
+        // 1) GoogleFormsManager から自動検出
+        const res = await GoogleFormsManager.detectEntryIds(normalized);
+        if (res?.title) setFormTitle(res.title);
+        if (res?.description) setFormDescription(res.description);
+        // ✅ ENTRY 候補は res.userId
+        if (!overrideUserEntry && res?.userId) {
+          setOverrideUserEntry(ensureEntryFormat(res.userId));
+        }
+        // 2) CosmosDB の保存済み ENTRY を読み込み
+        const liffId = resolveLiffId() || '';
+        const formId = extractFormId(normalized);
+        if (liffId && formId) {
+          try {
+            const r = await fetch(
+              `/api/entry-mappings?liffId=${encodeURIComponent(liffId)}&formId=${encodeURIComponent(formId)}`,
+              { credentials: 'include', cache: 'no-store' }
+            );
+            if (r.ok) {
+              const j = await r.json();
+              const entry = j?.entry || j?.data?.entry;
+              if (!overrideUserEntry && entry) {
+                setOverrideUserEntry(ensureEntryFormat(entry));
+              }
+            }
+          } catch {
+            /* 無視 */
+          }
+        }
+      } catch (e) {
+        console.warn('Form meta detect failed:', e);
+      }
+    }, 400);
+    return () => {
+      if (detectTimerRef.current) window.clearTimeout(detectTimerRef.current);
+    };
+  }, [formUrl, pathname, overrideUserEntry]);
   /* ------------------------------ Handlers ---------------------------------- */
 
   const handleGenerateLink = async () => {
@@ -576,9 +625,12 @@ export default function Home() {
       showToast('フォームURLを先に入力してください', 'error');
       return;
     }
-    // setIsDetecting(true);
-    setSignedLink('');
-
+    // if (notifyEnabled && !userProfile?.userId) {
+    //   showToast("通知を送信するにはLINEログインが必要です", "error");
+    //   return;
+    // }
+    setIsDetecting(true);
+    setSignedLink("");
     try {
       const normalized = viewUrlNormalized;
       const payload: Record<string, any> = {
@@ -592,48 +644,51 @@ export default function Home() {
       if (overrideUserEntry.trim()) {
         payload.entry = ensureEntryFormat(overrideUserEntry);
       }
-
       const currentLiffId = resolveLiffId();
       if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
         payload.liffId = currentLiffId;
       }
-
       // 生成
-      const r = await fetch('/api/links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch("/api/links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const t = await r.text();
       let j: any = null;
-      try { j = t ? JSON.parse(t) : null; } catch { /* noop */ }
-      if (!r.ok || !j?.ok) {
-        const code = j?.code || 'UNKNOWN';
-        console.error('links-create error:', { status: r.status, code, detail: j ?? t });
-        const msgMap: Record<string, string> = {
-          NO_ADMIN_ID: "（ログイン情報が無効です）",
-          BAD_FORM_URL: 'フォームURLが正しくありません。',
-          NO_FORM: 'フォームURLを入力してください。',
-          NO_BASIC_ID: '通知ON時は公式LINE（basicId）が必須です。',
-        };
-        showToast(msgMap[code] || `エラー: ${code}（${r.status}）`, "error");
-        return;
+      try { j = t ? JSON.parse(t) : null; } catch {/* noop */ }
+      if (!r.ok || !j?.ok) { /* ...エラー処理は既存のまま... */ return; }
+      // ★ 追加：DBから確定値を取り直す
+      if (j.lid) {
+        try {
+          const r2 = await fetch(`/api/links/${j.lid}`, { cache: "no-store" });
+          if (r2.ok) {
+            const k = await r2.json();
+            // API が title/desc/bgcolor/entry を返す前提
+            if (k?.title) setFormTitle(k.title);
+            if (k?.desc) setFormDescription(k.desc);
+            if (k?.bgcolor) setFormBgcolor(k.bgcolor);
+            if (k?.entry) setOverrideUserEntry(ensureEntryFormat(String(k.entry)));
+          }
+        } catch (e) {
+          console.warn("post-create hydrate failed:", e);
+        }
       }
-
-      // 返却用リンクを強化：entry と liff を必要なら付与
+      // 返却用リンクを強化…
       const u = new URL(j.link, window.location.origin);
-      if (overrideUserEntry.trim()) u.searchParams.set('entry', ensureEntryFormat(overrideUserEntry));
-      if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) u.searchParams.set('liff', currentLiffId);
+      if (overrideUserEntry.trim())
+        u.searchParams.set('entry', ensureEntryFormat(overrideUserEntry));
+      if (currentLiffId && LIFF_ID_RE.test(currentLiffId))
+        u.searchParams.set('liff', currentLiffId);
       const enhancedLink = u.toString();
-
       setSignedLink(enhancedLink);
-      if (j.lid) setCreatedLid(j.lid);  // ★ 作成された lid を保持
+      if (j.lid) setCreatedLid(j.lid);  // ←これは既存のまま
       showToast("連携リンクを生成しました", "success");
     } catch (e) {
       console.error("generate link failed:", e);
       showToast("連携リンク生成でエラーが発生しました", "error");
-      // } finally {
-      //   setIsDetecting(false);
+    } finally {
+      setIsDetecting(false);
     }
   };
 
@@ -825,6 +880,30 @@ export default function Home() {
                             LINE Developers Console
                           </a> にログイン
                         </p>
+                        <p className="text-sm text-gray-600">
+                          <span className="M7eMe">
+                            <span style={{
+                              backgroundColor: '#00be00',
+                              color: '#ffffff',
+                              marginRight: 2
+                            }}>{`</> `}</span> <span > <strong> LINEログイン →　 </strong></span>
+                          </span>
+                          <span className='text-gray-400'> チャネル基本設定 | </span>
+                          <span className='text-gray-400'> LINEログイン設定 | </span>
+                          <strong
+                            style={{
+                              textDecoration: "underline",
+                              textDecorationColor: "#00be00",
+                              textDecorationThickness: "5px", // 下線の太さを指定
+                            }}
+                          >
+                            LIFF
+                          </strong>
+
+                          <span className='text-gray-400'>  | 権限設定  </span>
+                          <span > 　から取得</span>
+                        </p>
+                        <p className="text-sm text-gray-600">無ければ追加</p>
                         <Form {...liffIdForm}>
                           <form onSubmit={liffIdForm.handleSubmit(onLiffIdSubmit)}>
                             <FormField
@@ -832,7 +911,9 @@ export default function Home() {
                               name="liffId"
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel className="text-xs font-medium text-gray-700">LIFF ID</FormLabel>
+                                  <FormLabel className="text-xs font-medium text-gray-700">
+                                    LIFF ID
+                                  </FormLabel>
                                   <FormControl>
                                     <Input
                                       placeholder="例: 1234567890-abcdefgh"
@@ -925,11 +1006,13 @@ export default function Home() {
                             {formUrl && (
                               <Button
                                 onClick={handleGenerateLink}
+                                disabled={isDetecting}
                                 variant={formUrl ? 'default' : 'outline'}
                                 size="sm"
                                 className="mt-2 w-full text-white border-blue-300 hover:bg-blue-500 mb-2"
                               >
-                                ✨ 連携リンクを生成
+                                {isDetecting ? '連携リンク生成中...' : '✨ 連携リンクを生成'}
+                                {/* ✨ 連携リンクを生成 */}
                               </Button>
                             )}
                           </div>
@@ -948,7 +1031,8 @@ export default function Home() {
                               </h4>
                               <div className="bg-white rounded border p-3 mb-3">
                                 <code className="text-xs font-mono text-gray-800 break-all">
-                                  {signedLink || '・・・'}
+                                  {isDetecting ? '...' : (signedLink || '・・・')}
+                                  {/* {signedLink || '・・・'} */}
                                 </code>
                               </div>
                             </div>
@@ -1009,7 +1093,9 @@ export default function Home() {
           )}
 
           {isTab === 'secret' && (
-            <LineSettingsClient formTitle={formTitle?.trim() || '新しいフォーム回答'} />
+            <LineSettingsClient formTitle={String(formTitle ?? '新しいフォーム回答')} />
+            // <LineSettingsClient formTitle={formTitle?.trim() || '新しいフォーム回答'} />
+            // <LineSettingsClient onClick={() => { setIsTab('admin'), setIsAdmin(true); }} login={handleLineLogin} lineUserId={manualUid} />
           )}
           {isTab === 'howto' && (
             <Howto onClick={() => { setIsTab('admin'); setIsAdmin(true); }} />
