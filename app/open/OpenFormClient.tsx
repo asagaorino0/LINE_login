@@ -102,22 +102,28 @@ export default function OpenFormClient() {
         }
 
         // --- 4) 友だち追加チェック ---
+        // デバッグモード: debugShowAddFriend=1 で強制的に友だち追加画面を表示
+        const debugShowAddFriend = qs.get("debugShowAddFriend") === "1";
+
         let isFriend = false;
-        try {
-          const friendship = await (window as any).liff.getFriendship();
-          isFriend = friendship?.friendFlag ?? false;
-          console.log("[OPEN] Friendship status:", friendship);
-          console.log("[OPEN] Is friend:", isFriend);
-        } catch (e) {
-          console.warn("[OPEN] getFriendship failed:", e);
-          // エラーの場合は続行（古いLIFFバージョンなどで未対応の可能性）
+        if (!debugShowAddFriend) {
+          try {
+            const friendship = await (window as any).liff.getFriendship();
+            isFriend = friendship?.friendFlag ?? false;
+            console.log("[OPEN] Friendship status:", friendship);
+            console.log("[OPEN] Is friend:", isFriend);
+          } catch (e) {
+            console.warn("[OPEN] getFriendship failed:", e);
+            // エラーの場合は続行（古いLIFFバージョンなどで未対応の可能性）
+          }
         }
 
-        // 友だち未追加の場合はブロック
-        if (!isFriend) {
+        // 友だち未追加の場合はブロック（またはデバッグモード）
+        if (!isFriend || debugShowAddFriend) {
           // 公式アカウント情報をstateに保存（UIで使用）
           (window as any).__lineAccount = { lineBasicId, lineDisplayName };
           setShowAddFriend(true);
+          console.log("[OPEN] Showing add friend screen (debug mode:", debugShowAddFriend, ")");
           return;
         }
 
