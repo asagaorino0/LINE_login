@@ -36,11 +36,13 @@ type Body = {
   expiresAt?: number | 0;
   entry?: string; // 手入力entry IDを追加
   liffId?: string; // LIFF IDを追加
+  lineBasicId?: string | null;
+  lineDisplayName?: string | null;
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { form, title, desc, notify, bgcolor, basicId, expiresAt, entry, liffId } = (await req.json()) as Body;
+    const { form, title, desc, notify, bgcolor, basicId, expiresAt, entry, liffId, lineBasicId, lineDisplayName } = (await req.json()) as Body;
 
     if (!form) return fail(req, { ok: false, code: "NO_FORM" }, 400);
     const formId = extractFormId(form);
@@ -83,6 +85,10 @@ export async function POST(req: NextRequest) {
       notify: notify ? 1 : 0,
       entry: entry ?? null,
       liffId: liffId ?? null,
+      lineBasicId: typeof lineBasicId === "string" && lineBasicId.trim()
+        ? (lineBasicId.trim().startsWith("@") ? lineBasicId.trim() : `@${lineBasicId.trim()}`)
+        : null,
+      lineDisplayName: lineDisplayName?.trim() || null,
       createdAt: now,
       expiresAt: Number(expiresAt || 0) || 0,
     });

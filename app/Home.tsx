@@ -120,6 +120,9 @@ export default function Home() {
   const [overrideUserEntry, setOverrideUserEntry] = useState<string>('');
   const [entryEditable, setEntryEditable] = useState<boolean>(false);
 
+  const [lineBasicId, setLineBasicId] = useState<string>('');
+  const [lineDisplayName, setLineDisplayName] = useState<string>('');
+
   const { toast, showToast, hideToast } = useToastNotification();
   // const didRunRef = useRef(false);
   const [cookieInfo, setCookieInfo] = useState<{ hasUid: boolean; uidMasked?: string } | null>(null);
@@ -363,6 +366,8 @@ export default function Home() {
           if (j.desc) setFormDescription(j.desc);
           if (j.bgcolor) setFormBgcolor(j.bgcolor);
           if (j.entry) setOverrideUserEntry(ensureEntryFormat(String(j.entry)));
+          setLineBasicId(j.lineBasicId ?? "");
+          setLineDisplayName(j.lineDisplayName ?? "");
         } else {
           showToast("リンクが無効または期限切れです", "error");
         }
@@ -648,6 +653,12 @@ export default function Home() {
       if (currentLiffId && LIFF_ID_RE.test(currentLiffId)) {
         payload.liffId = currentLiffId;
       }
+      if (lineBasicId.trim()) {
+        payload.lineBasicId = lineBasicId.trim();
+      }
+      if (lineDisplayName.trim()) {
+        payload.lineDisplayName = lineDisplayName.trim();
+      }
       // 生成
       const r = await fetch("/api/links", {
         method: "POST",
@@ -669,6 +680,8 @@ export default function Home() {
             if (k?.desc) setFormDescription(k.desc);
             if (k?.bgcolor) setFormBgcolor(k.bgcolor);
             if (k?.entry) setOverrideUserEntry(ensureEntryFormat(String(k.entry)));
+            setLineBasicId(k.lineBasicId ?? "");
+            setLineDisplayName(k.lineDisplayName ?? "");
           }
         } catch (e) {
           console.warn("post-create hydrate failed:", e);
@@ -998,6 +1011,31 @@ export default function Home() {
                                 <div className="text-[11px] text-gray-500 mt-2">
                                   ※ 「読み込み」は保存済みの ENTRY を取得して反映します。<br />
                                   ※ LIFF ID と フォームURL（またはフォームID）がキーです。
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {/* LINE公式アカウント情報 */}
+                            {formUrl ? (
+                              <div className="mt-3 p-3 rounded border bg-white">
+                                <div className="text-xs text-gray-700 mb-2 font-semibold">LINE公式アカウント情報</div>
+                                <div className="space-y-2">
+                                  <Input
+                                    value={lineBasicId}
+                                    onChange={(e) => setLineBasicId(e.target.value)}
+                                    placeholder="例）@075yuvdx"
+                                    className="text-xs"
+                                  />
+                                  <Input
+                                    value={lineDisplayName}
+                                    onChange={(e) => setLineDisplayName(e.target.value)}
+                                    placeholder="例）konoyubi 質問フォーム"
+                                    className="text-xs"
+                                  />
+                                </div>
+                                <div className="text-[11px] text-gray-500 mt-2">
+                                  ※ 友だち未追加のユーザーに表示される情報です。<br />
+                                  ※ Basic ID（@で始まるID）とアカウント名を入力してください。
                                 </div>
                               </div>
                             ) : null}

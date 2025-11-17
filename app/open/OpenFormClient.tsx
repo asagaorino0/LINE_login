@@ -7,6 +7,7 @@ import { GoogleFormsManager } from "@/lib/googleForms";
 export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
+  const [showAddFriend, setShowAddFriend] = useState(false);
   const sentRef = useRef(false);
 
   // 通知送信（fetch 本線 / beacon フォールバック / 少し待つ）
@@ -76,6 +77,10 @@ export default function OpenFormClient() {
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
 
+        // 公式アカウント情報を取得
+        const lineBasicId = link.lineBasicId || "";
+        const lineDisplayName = link.lineDisplayName || "";
+
         // --- 2) LIFF ID（URL > link.liffId > env）---
         const liffIdFromQuery = (qs.get("liff") || qs.get("liffId") || "").trim();
         const liffToUse =
@@ -96,7 +101,27 @@ export default function OpenFormClient() {
           return; // リダイレクト→復帰後に以下が続行
         }
 
-        // --- 4) プロフィール（in-client ならUIDが取れる）---
+        // --- 4) 友だち追加チェック ---
+        let isFriend = false;
+        try {
+          const friendship = await (window as any).liff.getFriendship();
+          isFriend = friendship?.friendFlag ?? false;
+          console.log("[OPEN] Friendship status:", friendship);
+          console.log("[OPEN] Is friend:", isFriend);
+        } catch (e) {
+          console.warn("[OPEN] getFriendship failed:", e);
+          // エラーの場合は続行（古いLIFFバージョンなどで未対応の可能性）
+        }
+
+        // 友だち未追加の場合はブロック
+        if (!isFriend) {
+          // 公式アカウント情報をstateに保存（UIで使用）
+          (window as any).__lineAccount = { lineBasicId, lineDisplayName };
+          setShowAddFriend(true);
+          return;
+        }
+
+        // --- 5) プロフィール（in-client ならUIDが取れる）---
         const profile = await liffManager.getProfile().catch(() => null);
         const uid = profile?.userId || "";
         console.log("[OPEN] LIFF Profile:", profile);
@@ -164,9 +189,52 @@ export default function OpenFormClient() {
     }
   };
 
+  const lineAccount = (window as any).__lineAccount || {};
+  const lineBasicId = lineAccount.lineBasicId || "";
+  const lineDisplayName = lineAccount.lineDisplayName || "";
+
   return (
     <div className="min-h-screen flex items-center justify-center text-sm text-gray-600 p-4">
-      {showOpenInLine ? (
+      {showAddFriend ? (
+        <div className="text-center max-w-md space-y-4 p-6">
+          <div className="text-xl font-bold text-gray-800 mb-3">友だち追加が必要です</div>
+          <p className="text-sm text-gray-700 mb-4 leading-relaxed">
+            このフォームをご利用いただくには、<br />
+            公式LINEアカウントを友だち追加していただく必要があります。
+          </p>
+          {lineBasicId ? (
+            <>
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-xs text-gray-600 mb-2">公式アカウント</p>
+                {lineDisplayName && <p className="text-base font-medium text-gray-800">{lineDisplayName}</p>}
+                <p className="text-sm text-gray-600 mt-1">{lineBasicId}</p>
+              </div>
+              <button
+                onClick={() => {
+                  // LINEアプリ内であれば直接公式アカウントページを開く
+                  const lineUrl = `https://line.me/R/ti/p/${encodeURIComponent(lineBasicId)}`;
+                  if ((window as any).liff?.openWindow) {
+                    (window as any).liff.openWindow({ url: lineUrl, external: false });
+                  } else {
+                    window.open(lineUrl, "_blank");
+                  }
+                }}
+                className="w-full px-6 py-3 rounded-lg bg-[#06C755] text-white font-medium hover:bg-[#05B24D] transition-colors"
+                data-testid="button-add-friend"
+              >
+                友だち追加ページを開く
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-gray-600">
+              このリンクは公式アカウント情報が設定されていません。管理者にお問い合わせください。
+            </p>
+          )}
+          <p className="text-xs text-gray-500 mt-4">
+            友だち追加後、このページを再度開いてください。
+          </p>
+        </div>
+      ) : showOpenInLine ? (
         <div className="text-center space-y-3">
           <div className="text-gray-700 font-medium">外部ブラウザで開かれています</div>
           <p className="text-xs text-gray-500">LINEアプリで開くとユーザー情報を自動反映できます。</p>
