@@ -155,30 +155,59 @@ async function loadSecretsByAdminKey(adminKey: string): Promise<Secrets> {
 }
 
 /* ========= Flexメッセージ ========= */
-function buildFlexCard(formUrl: string, title?: string, desc?: string): FlexMessage {
+function buildFlexCard(
+  formUrl: string,
+  title?: string,
+  desc?: string,
+  profile?: { displayName: string; pictureUrl?: string }
+): FlexMessage {
+  const bubble: any = {
+    type: "bubble",
+    header: {
+      type: "box", layout: "vertical",
+      contents: [{ type: "text", text: title ?? "Googleフォーム", weight: "bold", size: "md", wrap: true }]
+    },
+    body: {
+      type: "box", layout: "vertical", spacing: "sm",
+      contents: [
+        { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" }
+      ]
+    },
+    footer: {
+      type: "box", layout: "vertical", spacing: "sm",
+      contents: [
+        { type: "button", style: "secondary", action: { type: "message", label: "回答済を通知", text: "申し込みフォーム回答済み" } }
+      ]
+    }
+  };
+
+  // プロフィール画像があれば hero セクションに追加
+  if (profile?.pictureUrl) {
+    bubble.hero = {
+      type: "image",
+      url: profile.pictureUrl,
+      size: "sm",
+      aspectRatio: "1:1",
+      aspectMode: "cover"
+    };
+  }
+
+  // プロフィール名があれば body の先頭に追加
+  if (profile?.displayName) {
+    bubble.body.contents.unshift({
+      type: "text",
+      text: `${profile.displayName} 様`,
+      weight: "bold",
+      size: "sm",
+      color: "#1DB446",
+      margin: "none"
+    });
+  }
+
   return {
     type: "flex",
     altText: title ? `【フォーム】${title}` : "Googleフォーム",
-    contents: {
-      type: "bubble",
-      header: {
-        type: "box", layout: "vertical",
-        contents: [{ type: "text", text: title ?? "Googleフォーム", weight: "bold", size: "md", wrap: true }]
-      },
-      body: {
-        type: "box", layout: "vertical", spacing: "sm",
-        contents: [
-          { type: "text", text: desc ?? "フォームに回答してください。", wrap: true, size: "sm", color: "#555555" }
-        ]
-      },
-      footer: {
-        type: "box", layout: "vertical", spacing: "sm",
-        contents: [
-          // { type: "button", style: "primary", action: { type: "uri", label: "フォームを開く", uri: formUrl } },
-          { type: "button", style: "secondary", action: { type: "message", label: "回答済を通知", text: "申し込みフォーム回答済み" } }
-        ]
-      }
-    }
+    contents: bubble
   };
 }
 
@@ -205,9 +234,15 @@ export async function POST(req: NextRequest) {
     const { channelAccessToken, channelSecret } = await loadSecretsByAdminKey(adminKey);
     const client = new Client({ channelAccessToken, channelSecret });
 
-    // push の前で UID 妥当性チェック（友だち/チャネル）
+    // push の前で UID 妥当性チェック（友だち/チャネル）& プロフィール取得
+    let userProfile: { displayName: string; pictureUrl?: string } | null = null;
     try {
-      await client.getProfile(userId);
+      const profile = await client.getProfile(userId);
+      userProfile = {
+        displayName: profile.displayName,
+        pictureUrl: profile.pictureUrl
+      };
+      console.log(`[api/line] User profile: ${profile.displayName}`);
     } catch (e: any) {
       console.error("getProfile failed (not friend / wrong channel):",
         e?.originalError?.response?.data || e?.message);
@@ -215,7 +250,7 @@ export async function POST(req: NextRequest) {
     }
     // 送信
     if (type === "card" && formUrl) {
-      const flex = buildFlexCard(formUrl, title, desc);
+      const flex = buildFlexCard(formUrl, title, desc, userProfile ?? undefined);
       try {
         await client.pushMessage(userId, flex);
         return ok(req, { success: true });
