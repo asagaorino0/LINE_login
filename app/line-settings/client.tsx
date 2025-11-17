@@ -115,17 +115,42 @@ function getLineProfile(lineToken, userId){
 function extractUidFromResponses(items){
   const UID_TITLE_HINTS = ['LINE User ID','LINEユーザーID','LINE UID','ユーザーID','uid'];
   var uid = '';
+  
+  // 1) タイトルで探す
   for (var i=0;i<items.length;i++){
     var it = items[i];
-    var title = it.getItem().getTitle();
+    var title = String(it.getItem().getTitle() || '').trim();
     var resp = String(it.getResponse() || '').trim();
-    if (!uid && UID_TITLE_HINTS.indexOf(title) >= 0) uid = resp;
-    if (!uid) {
-      var m = resp.match(/^U[0-9a-f]{32}$/i);
-      if (m) uid = m[0];
+    
+    // タイトルが完全一致または部分一致
+    for (var j=0;j<UID_TITLE_HINTS.length;j++){
+      if (title.indexOf(UID_TITLE_HINTS[j]) >= 0) {
+        uid = resp;
+        break;
+      }
     }
     if (uid) break;
   }
+  
+  // 2) タイトルで見つからなければ、値から正規表現でUID抽出
+  if (!uid) {
+    for (var i=0;i<items.length;i++){
+      var resp = String(items[i].getResponse() || '').trim();
+      var m = resp.match(/^U[0-9a-f]{32,}$/i);
+      if (m) {
+        uid = m[0];
+        break;
+      }
+    }
+  }
+  
+  // 3) デバッグログ
+  if (uid) {
+    Logger.log('[UID抽出成功] ' + uid);
+  } else {
+    Logger.log('[UID抽出失敗] すべての回答を確認しましたがUIDが見つかりませんでした');
+  }
+  
   return uid;
 }
 
@@ -212,6 +237,15 @@ function onFormSubmit(e) {
   var prof = uid ? getLineProfile(LINE_TOKEN, uid) : null;
   var displayName = prof && prof.displayName ? String(prof.displayName) : '';
   var pictureUrl  = prof && prof.pictureUrl  ? String(prof.pictureUrl)  : '';
+  
+  // デバッグログ
+  if (!uid) {
+    Logger.log('[警告] UIDが抽出できませんでした。プロフィール情報なしで送信します。');
+  } else if (!prof) {
+    Logger.log('[警告] UID=' + uid + ' のプロフィール取得に失敗しました。');
+  } else {
+    Logger.log('[成功] プロフィール取得: ' + displayName + ' / アイコン=' + (pictureUrl ? 'あり' : 'なし'));
+  }
 
   // Flex生成：ヘッダは「回答：<フォーム名>（<LINE名>）」
   var jumpLink = ${JUMP_LINK_EXPR};
