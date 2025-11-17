@@ -18,6 +18,8 @@ type LinkDoc = {
   aid?: string;
   basicId?: string;
   formId?: string;
+  lineBasicId?: string;
+  lineDisplayName?: string;
 };
 
 const toBooleanNumber = (v: unknown) => (v === true || v === 1 || v === "1" ? 1 : 0);
@@ -80,6 +82,8 @@ export async function GET(req: Request, ctx: any) {
       entry,
       notify,
       liffId,
+      lineBasicId: resource.lineBasicId,
+      lineDisplayName: resource.lineDisplayName,
     };
 
     const res = NextResponse.json(body, { status: 200 });
@@ -87,5 +91,33 @@ export async function GET(req: Request, ctx: any) {
     return res;
   } catch {
     return NextResponse.json({ ok: false, code: "LINKS_READ_FAILED" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request, ctx: any) {
+  try {
+    const lid = ctx?.params?.lid?.trim?.();
+    if (!lid) return NextResponse.json({ ok: false, code: "NO_LID" }, { status: 400 });
+
+    const { resource } = await getLinksByIdContainer().item(lid, lid).read<LinkDoc>();
+    if (!resource) return NextResponse.json({ ok: false, code: "NOT_FOUND" }, { status: 404 });
+
+    const body = await req.json();
+    const updates: Partial<LinkDoc> = {};
+
+    if (body.lineBasicId !== undefined) {
+      updates.lineBasicId = body.lineBasicId?.trim() || null;
+    }
+    if (body.lineDisplayName !== undefined) {
+      updates.lineDisplayName = body.lineDisplayName?.trim() || null;
+    }
+
+    const updatedDoc = { ...resource, ...updates };
+    await getLinksByIdContainer().items.upsert(updatedDoc);
+
+    return NextResponse.json({ ok: true, message: "Link updated successfully" }, { status: 200 });
+  } catch (e) {
+    console.error("PATCH /api/links/[lid] failed:", e);
+    return NextResponse.json({ ok: false, code: "LINKS_UPDATE_FAILED" }, { status: 500 });
   }
 }
