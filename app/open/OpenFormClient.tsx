@@ -195,7 +195,8 @@ export default function OpenFormClient() {
     }
   };
 
-  const lineAccount = (window as any).__lineAccount || {};
+  // ブラウザ環境でのみ window にアクセス
+  const lineAccount = typeof window !== "undefined" ? (window as any).__lineAccount || {} : {};
   const lineBasicId = lineAccount.lineBasicId || "";
   const lineDisplayName = lineAccount.lineDisplayName || "";
 
