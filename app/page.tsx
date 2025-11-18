@@ -1,8 +1,6 @@
-'use client';
+import dynamic from 'next/dynamic';
 
-import Home from "./Home";
-
-export const dynamic = 'force-dynamic';
+const Home = dynamic(() => import('./Home'), { ssr: false });
 
 export default function Page() {
   return <Home />;
