@@ -1,11 +1,8 @@
 export const runtime = "nodejs";   // Node ランタイムで Cosmos に触れる
 export const revalidate = 0;       // 常に動的
 
-import dynamic from "next/dynamic";
+import OpenFormClient from "./OpenFormClient";
 import { getLinksByIdContainer } from "@/lib/cosmos";
-import { fetchFormMeta } from "@/lib/formsMeta";
-
-const OpenFormClient = dynamic(() => import("./OpenFormClient"), { ssr: false });
 
 // OGP をサーバーで生成（JS不要）
 export async function generateMetadata({ searchParams }: { searchParams: any }) {
@@ -19,20 +16,8 @@ export async function generateMetadata({ searchParams }: { searchParams: any }) 
     try {
       const { resource } = await getLinksByIdContainer().item(lid, lid).read<any>();
       if (resource) {
-        title = (resource.title || "").trim();
-        desc = (resource.desc || "").trim();
-
-        // title/desc が空ならGoogleフォームから取得
-        if (!title || !desc) {
-          try {
-            const meta = await fetchFormMeta(resource.formUrl);
-            if (!title && meta.title) title = meta.title;
-            if (!desc && meta.desc) desc = meta.desc;
-          } catch { /* noop */ }
-        }
-
-        // まだ空ならデフォルト値
-        if (!title) title = "Googleフォーム";
+        title = resource.title || title;
+        desc = resource.desc || desc;
       }
     } catch { /* noop */ }
   }
