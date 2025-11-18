@@ -203,7 +203,7 @@ export default function Home() {
 
   // LIFF 初期化（URL / フォーム / サーバ設定 / ENV / フォールバックの優先順）
   const resolveLiffId = (): string | undefined => {
-    const sp = new URLSearchParams(location.search);
+    const sp = new URLSearchParams(window.location.search);
     const fromUrl = sp.get("liff") || sp.get("liffId") || undefined;
     const fromForm = liffIdForm.getValues?.().liffId?.trim() || undefined;
     const fromServer = liffSettingsQuery.data?.liffId?.trim() || undefined;
@@ -232,7 +232,7 @@ export default function Home() {
         await ensureLiffReady();
         setIsInitialized(true);
         try {
-          const sp = new URLSearchParams(location.search);
+          const sp = new URLSearchParams(window.location.search);
           const tabFromUrl = (sp.get('tab') || '').toLowerCase();
           const returnTab = sessionStorage.getItem('returnTab');
           const savedState = sessionStorage.getItem('appState');
@@ -252,7 +252,7 @@ export default function Home() {
           console.error('🔄 [RESTORE] Failed to restore app state:', error);
         }
         // 初回ログイン時にLIFF IDを自動保存
-        const sp = new URLSearchParams(location.search);
+        const sp = new URLSearchParams(window.location.search);
         const liffIdFromUrl = sp.get("liff") || sp.get("liffId");
         if (liffIdFromUrl && (liffSettingsQuery.isSuccess && !liffSettingsQuery.data?.hasLiffId)) {
           try {
@@ -381,7 +381,7 @@ export default function Home() {
       setIsTab("admin");
       sp.delete("tab");
       const qs = sp.toString();
-      const clean = `${location.pathname}${qs ? "?" + qs : ""}${location.hash}`;
+      const clean = `${window.location.pathname}${qs ? "?" + qs : ""}${window.location.hash}`;
       window.history.replaceState(null, "", clean);
     }
   }, [pathname, showToast]);
