@@ -1,9 +1,11 @@
 export const runtime = "nodejs";   // Node ランタイムで Cosmos に触れる
 export const revalidate = 0;       // 常に動的
 
-import OpenFormClient from "./OpenFormClient";
+import dynamic from "next/dynamic";
 import { getLinksByIdContainer } from "@/lib/cosmos";
 import { fetchFormMeta } from "@/lib/formsMeta";
+
+const OpenFormClient = dynamic(() => import("./OpenFormClient"), { ssr: false });
 
 // OGP をサーバーで生成（JS不要）
 export async function generateMetadata({ searchParams }: { searchParams: any }) {
