@@ -44,6 +44,7 @@ export default function OpenFormClient() {
   useEffect(() => {
     (async () => {
       try {
+        setStatus("URL解析中...");
         console.log("[OPEN] Full URL:", location.href);
         console.log("[OPEN] Search params:", location.search);
 
@@ -53,6 +54,7 @@ export default function OpenFormClient() {
         const liffState = currentQs.get("liff.state");
 
         if (liffState) {
+          setStatus("liff.state復元中...");
           // liff.stateがある場合、それをデコードして元のURLを復元
           try {
             const decodedState = decodeURIComponent(liffState);
@@ -74,9 +76,11 @@ export default function OpenFormClient() {
         if (!lid) throw new Error("NO_LID_IN_URL");
 
         // --- 1) リンク情報 ---
+        setStatus(`リンク情報取得中 (lid=${lid})...`);
         const linkResp = await fetch(`/api/links/${encodeURIComponent(lid)}`, { credentials: "include" });
         const link = await linkResp.json();
         if (!linkResp.ok || !link?.ok) throw new Error(link?.code || "LINK_NOT_FOUND");
+        setStatus("リンク情報取得完了");
 
         // 公式アカウント情報を取得
         const lineBasicId = link.lineBasicId || "";
@@ -90,13 +94,17 @@ export default function OpenFormClient() {
           (process.env.NEXT_PUBLIC_DEFAULT_LIFF_ID || "");
         if (!liffToUse) throw new Error("LIFF ID が未設定です。");
 
+        setStatus(`LIFF初期化中 (${liffToUse.substring(0, 10)}...)...`);
         const ok = await liffManager.init({ liffId: liffToUse });
         if (!ok) throw new Error("LIFF 初期化に失敗しました。");
+        setStatus("LIFF初期化完了");
 
         // --- 3) ログイン確認 & 実行 ---
         const isLoggedIn = (window as any).liff?.isLoggedIn?.() ?? false;
         console.log("[OPEN] isLoggedIn:", isLoggedIn);
+        setStatus(`ログイン状態: ${isLoggedIn ? "ログイン済み" : "未ログイン"}`);
         if (!isLoggedIn) {
+          setStatus("LINEログインにリダイレクト中...");
           // 未ログインならログイン実行（LINEアプリ内外問わず）
           await (window as any).liff.login({ redirectUri: location.href });
           return; // リダイレクト→復帰後に以下が続行
@@ -135,10 +143,12 @@ export default function OpenFormClient() {
         }
 
         // --- 5) プロフィール（in-client ならUIDが取れる）---
+        setStatus("プロフィール取得中...");
         const profile = await liffManager.getProfile().catch(() => null);
         const uid = profile?.userId || "";
         console.log("[OPEN] LIFF Profile:", profile);
         console.log("[OPEN] LINE UID:", uid);
+        setStatus(`UID取得: ${uid ? uid.substring(0, 8) + "..." : "取得できず"}`);
 
         // --- 5) Google フォーム URL（view に正規化）---
         const viewUrl = GoogleFormsManager.toViewUrl(link.formUrl);
@@ -181,6 +191,7 @@ export default function OpenFormClient() {
 
         // --- 9) 遷移 ---
         // （prefill に UID が入っていなければ、そのまま base に飛ぶ）
+        setStatus("Googleフォームへ遷移中...");
         setTimeout(() => location.replace(prefill), 120);
       } catch (e: any) {
         console.error("[open] error:", e);
