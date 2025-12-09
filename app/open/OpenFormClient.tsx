@@ -8,6 +8,7 @@ export default function OpenFormClient() {
   const [err, setErr] = useState<string | null>(null);
   const [showOpenInLine, setShowOpenInLine] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [status, setStatus] = useState<string>("初期化中...");
   const sentRef = useRef(false);
 
   // 通知送信（fetch 本線 / beacon フォールバック / 少し待つ）
@@ -103,6 +104,7 @@ export default function OpenFormClient() {
 
         // --- 4) 友だち追加チェック ---
         // デバッグモード: debugShowAddFriend=1 で強制的に友だち追加画面を表示
+        setStatus("友だち状態を確認中...");
         const debugShowAddFriend = qs.get("debugShowAddFriend") === "1";
 
         let isFriend = false;
@@ -110,18 +112,23 @@ export default function OpenFormClient() {
           try {
             const friendship = await (window as any).liff.getFriendship();
             isFriend = friendship?.friendFlag ?? false;
+            setStatus(`友だち状態: ${isFriend ? "追加済み" : "未追加"}`);
             console.log("[OPEN] Friendship status:", friendship);
             console.log("[OPEN] Is friend:", isFriend);
-          } catch (e) {
+          } catch (e: any) {
+            setStatus(`getFriendship エラー: ${e?.message || e}`);
             console.warn("[OPEN] getFriendship failed:", e);
             // エラーの場合は続行（古いLIFFバージョンなどで未対応の可能性）
           }
+        } else {
+          setStatus("デバッグモード: 友だち追加画面を強制表示");
         }
 
         // 友だち未追加の場合はブロック（またはデバッグモード）
         if (!isFriend || debugShowAddFriend) {
           // 公式アカウント情報をstateに保存（UIで使用）
           (window as any).__lineAccount = { lineBasicId, lineDisplayName };
+          setStatus(`友だち追加画面を表示 (lineBasicId: ${lineBasicId || "未設定"})`);
           setShowAddFriend(true);
           console.log("[OPEN] Showing add friend screen (debug mode:", debugShowAddFriend, ")");
           return;
@@ -258,6 +265,7 @@ export default function OpenFormClient() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 mx-auto mb-4"></div>
           <div>フォームへ遷移中…</div>
+          <div className="text-xs text-gray-400 mt-2">{status}</div>
         </div>
       )}
     </div>
