@@ -250,16 +250,17 @@ if (jumpLink) {
 
   // ★ここでフォーム回答名も一緒に postback data に入れる
   if (targetUid) {
-  var safeName = encodeURIComponent(String(targetName || '').trim());
-  buttons.push({
-  type: 'button',
-  style: 'primary',
-  action: {
-  type: 'postback',
-  label: 'メッセージを送る',
-  data: 'action=compose&uid=' + encodeURIComponent(targetUid) + '&name=' + safeName
+    var safeName = encodeURIComponent(String(targetName || '').trim());
+    buttons.push({
+      type: 'button',
+      style: 'primary',
+      action: {
+        type: 'postback',
+        label: 'メッセージを送る',
+        data: 'action=compose&uid=' + encodeURIComponent(targetUid) + '&name=' + safeName
+      }
+    });
   }
-})
 
   if (buttons.length > 0) {
   contents.push({ type: 'separator', margin: 'md' });
