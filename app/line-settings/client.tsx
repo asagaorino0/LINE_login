@@ -258,9 +258,8 @@ if (jumpLink) {
   type: 'postback',
   label: 'メッセージを送る',
   data: 'action=compose&uid=' + encodeURIComponent(targetUid) + '&name=' + safeName
-  
-  };
   }
+})
 
   if (buttons.length > 0) {
   contents.push({ type: 'separator', margin: 'md' });
