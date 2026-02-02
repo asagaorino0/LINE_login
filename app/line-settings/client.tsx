@@ -635,20 +635,29 @@ export default function LineSettingsClient({ formTitle }: { formTitle?: string }
               <ul className="list-disc ml-5">
                 <li>「種類を選択」→ <strong>ウェブアプリ</strong></li>
                 <li>「実行するユーザー」→ <strong>自分</strong></li>
-                <li>「アクセスできるユーザー」→ <strong>自分のみ</strong>（または組織内）</li>
+                <li>「アクセスできるユーザー」→ <strong>全員</strong></li>
               </ul>
-              最後に <strong>「デプロイ」</strong> を押し、表示された URL を開きます。
+              最後に <strong>「デプロイ」</strong> を押し、表示された URL をコピー　＆　リンクを開きます。
             </li>
-
             <li>
               <strong>設定画面を開く → 値を入力 → 保存</strong>
               <br />
               ブラウザでウェブアプリのURLを開くと、
-              <strong>チャンネルアクセストークン（長期） * / あなたのユーザーID * / 通知リンクURL</strong> の入力フォームが表示されます。
+              <strong>あなたのユーザーID（管理者）） * / チャンネルアクセストークン（長期） * / チャンネルシークレット（Webhook用・推奨） / 通知リンクURL</strong> の入力フォームが表示されます。
               <br />
               値を入力して「保存」を押せばGAS内部に保存され、フォーム送信時に通知で使われます。
             </li>
-
+            <li>
+              <p className="text-sm text-gray-600">
+                <a href="https://developers.line.biz/console/" target="blank" style={{ color: "blue" }}>
+                  LINE Developers Console
+                </a> にログイン
+              </p>
+              <strong>LINE Developers 側の設定</strong>
+              <strong>「デプロイ」</strong>で出たURLを<strong>Webhook設定</strong>の<strong>Webhook URL</strong>に貼り付け
+              <br />
+              <strong>Webhookの利用：ON</strong>
+            </li>
             <li>
               <strong>トリガーを設定</strong>
               <br />
