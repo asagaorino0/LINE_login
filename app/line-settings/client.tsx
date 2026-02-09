@@ -279,7 +279,7 @@ contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', spacing: 'm
 };
 }
 // ================= 送信エントリーポイント（フォーム送信時） =================
-function onFormSubmit(e) {
+function onFormSubmitHandler(e) {
 const LINE_TOKEN = props.getProperty('LINE_TOKEN') || '';
 const LINE_USER_ID = props.getProperty('LINE_USER_ID') || '';
 const FORM_URL = props.getProperty('FORM_URL') || '';
@@ -507,7 +507,7 @@ export default function LineSettingsClient({ formTitle }: { formTitle?: string }
           <p className="text-gray-600">
             下のコードを<strong>フォームの Apps Script</strong>にコピペ → 保存 →
             左メニュー「トリガー」で{" "}
-            <code className="mx-1">onFormSubmit</code> を <strong>フォーム送信時</strong> に設定してください。
+            <code className="mx-1">onFormSubmitHandler</code> を <strong>フォーム送信時</strong> に設定してください。
           </p>
         </div>
 
@@ -664,7 +664,7 @@ export default function LineSettingsClient({ formTitle }: { formTitle?: string }
               Apps Script 画面左側の時計アイコン（トリガー） → <strong>「トリガーを追加」</strong>
               <br />
               関数を <strong>
-                <code>onFormSubmit</code>
+                <code>onFormSubmitHandler</code>
               </strong>
               、イベントの種類を <strong>フォーム送信時</strong> に設定します。
             </li>
