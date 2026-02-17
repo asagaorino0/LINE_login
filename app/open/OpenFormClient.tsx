@@ -297,7 +297,7 @@ export default function OpenFormClient() {
             className="w-full px-6 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
             data-testid="button-recheck-friendship"
           >
-            友だち追加後に再確認する
+            友だち追加完了→フォームに移動する
           </button>
         </div>
       ) : showOpenInLine ? (
