@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { liffManager } from "@/lib/liff";
 import { GoogleFormsManager } from "@/lib/googleForms";
 
@@ -9,7 +9,15 @@ export default function OpenFormClient() {
   const [showOpenInLine, setShowOpenInLine] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [status, setStatus] = useState<string>("初期化中...");
+  const [retryKey, setRetryKey] = useState(0);
   const sentRef = useRef(false);
+
+  const retryFlow = useCallback(() => {
+    setErr(null);
+    setShowAddFriend(false);
+    setStatus("友だち状態を再確認中...");
+    setRetryKey((v) => v + 1);
+  }, []);
 
   // 通知送信（fetch 本線 / beacon フォールバック / 少し待つ）
   async function sendNotifyCard(payload: any) {
@@ -120,6 +128,13 @@ export default function OpenFormClient() {
           try {
             const friendship = await (window as any).liff.getFriendship();
             isFriend = friendship?.friendFlag ?? false;
+            // 友だち追加直後は反映が遅れる場合があるため一度だけ再確認
+            if (!isFriend) {
+              await new Promise((r) => setTimeout(r, 800));
+              const friendship2 = await (window as any).liff.getFriendship();
+              isFriend = friendship2?.friendFlag ?? false;
+              console.log("[OPEN] Friendship status (retry):", friendship2);
+            }
             setStatus(`友だち状態: ${isFriend ? "追加済み" : "未追加"}`);
             console.log("[OPEN] Friendship status:", friendship);
             console.log("[OPEN] Is friend:", isFriend);
@@ -198,7 +213,23 @@ export default function OpenFormClient() {
         setErr(e?.message || String(e));
       }
     })();
-  }, []);
+  }, [retryKey]);
+
+  useEffect(() => {
+    if (!showAddFriend) return;
+
+    const onFocus = () => retryFlow();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") retryFlow();
+    };
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [showAddFriend, retryFlow]);
 
   // “LINEで開く”保険（URL の liff をそのまま使う）
   const openInLine = () => {
@@ -258,6 +289,13 @@ export default function OpenFormClient() {
           <p className="text-xs text-gray-500 mt-4">
             友だち追加後、このページを再度開いてください。
           </p>
+          <button
+            onClick={retryFlow}
+            className="w-full px-6 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            data-testid="button-recheck-friendship"
+          >
+            友だち追加後に再確認する
+          </button>
         </div>
       ) : showOpenInLine ? (
         <div className="text-center space-y-3">
