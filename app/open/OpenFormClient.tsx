@@ -124,31 +124,34 @@ export default function OpenFormClient() {
         const debugShowAddFriend = qs.get("debugShowAddFriend") === "1";
 
         let isFriend = false;
+        let friendshipCheckOk = false;
         if (!debugShowAddFriend) {
           try {
             const friendship = await (window as any).liff.getFriendship();
             isFriend = friendship?.friendFlag ?? false;
+            friendshipCheckOk = true;
             // 友だち追加直後は反映が遅れる場合があるため一度だけ再確認
             if (!isFriend) {
               await new Promise((r) => setTimeout(r, 800));
               const friendship2 = await (window as any).liff.getFriendship();
               isFriend = friendship2?.friendFlag ?? false;
+              friendshipCheckOk = true;
               console.log("[OPEN] Friendship status (retry):", friendship2);
             }
             setStatus(`友だち状態: ${isFriend ? "追加済み" : "未追加"}`);
             console.log("[OPEN] Friendship status:", friendship);
             console.log("[OPEN] Is friend:", isFriend);
           } catch (e: any) {
-            setStatus(`getFriendship エラー: ${e?.message || e}`);
+            setStatus("友だち状態を取得できないため、確認をスキップして続行します");
             console.warn("[OPEN] getFriendship failed:", e);
-            // エラーの場合は続行（古いLIFFバージョンなどで未対応の可能性）
+            // エラーの場合は続行（LIFF設定/権限で friendship API が使えないケース）
           }
         } else {
           setStatus("デバッグモード: 友だち追加画面を強制表示");
         }
 
         // 友だち未追加の場合はブロック（またはデバッグモード）
-        if (!isFriend || debugShowAddFriend) {
+        if ((friendshipCheckOk && !isFriend) || debugShowAddFriend) {
           // 公式アカウント情報をstateに保存（UIで使用）
           (window as any).__lineAccount = { lineBasicId, lineDisplayName };
           setStatus(`友だち追加画面を表示 (lineBasicId: ${lineBasicId || "未設定"})`);
